@@ -1,0 +1,28 @@
+{
+    "id": "0443C03D",
+    "path": "~/GitHub/port_MDRP_database/MDRP_Database.Rmd",
+    "project_path": "MDRP_Database.Rmd",
+    "type": "r_markdown",
+    "hash": "57249002",
+    "contents": "",
+    "dirty": false,
+    "created": 1683158672183.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "chunk_output_type": "inline",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "50,0",
+        "scrollLine": "38",
+        "last_setup_crc32": "eeea8dc41ac5f24e"
+    },
+    "folds": "84|24|91|0|\n85|24|88|2|\n88|10|90|2|\n109|20|127|3|\n113|22|126|6|\n115|24|117|7|\n119|24|121|7|\n123|24|125|7|\n149|34|157|0|\n160|39|163|0|\n169|29|184|0|\n198|28|201|0|\n",
+    "lastKnownWriteTime": 1683161288,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1683161288322,
+    "read_only": false,
+    "read_only_alternatives": []
+}

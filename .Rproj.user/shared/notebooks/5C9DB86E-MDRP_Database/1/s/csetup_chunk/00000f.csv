@@ -1,0 +1,30 @@
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"0",".libPaths(data.table::last(.libPaths()[which(grepl(""Program"", .libPaths()))]));"
+"0","options(future.globals.maxSize = params$future.globals.maxSize);"
+"0",""
+"0","library(book.of.workflow)"
+"0",""
+"0","params[c(""req_libs"", ""opt_libs"", ""git_libs"")] |> "
+"0","  purrr::compact() |> purrr::walk(\(x) purrr::walk(x, \(i) library(i, character.only = TRUE)))"
+"1","[1m[33mError[39m in `map()`:[22m
+[38;5;255m[36mi[38;5;255m In index: 1.
+[36mi[38;5;255m With name: req_libs.[39m
+[1mCaused by error in `map()`:[22m
+[38;5;255m[36mi[38;5;255m In index: 6.[39m
+[1mCaused by error in `library()`:[22m
+[33m![39m there is no package called ‘openxlsx’
+Backtrace:
+[90m  1. [39m[1mpurrr[22m::walk(...)
+[90m  2. [39m[1m[94mpurrr::map([39m[22m.x, .f, ..., .progress = .progress[1m[94m)[39m[22m
+[90m  3. [39mpurrr:::map_(""list"", .x, .f, ..., .progress = .progress)
+[90m  7. [39m[1mglobal[22m .f(.x[[i]], ...)
+[90m  8. [39m[1mpurrr[22m::walk(x, function(i) library(i, character.only = TRUE))
+[90m  9. [39m[1m[94mpurrr::map([39m[22m.x, .f, ..., .progress = .progress[1m[94m)[39m[22m
+[90m 10. [39mpurrr:::map_(""list"", .x, .f, ..., .progress = .progress)
+[90m 14. [39m.f(.x[[i]], ...)
+[90m 15. [39m[1mbase[22m::library(i, character.only = TRUE)
+[90m 16. [39mbase::stop(packageNotFoundError(package, lib.loc, sys.call()))
+"

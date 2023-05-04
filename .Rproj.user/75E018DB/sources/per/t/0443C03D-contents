@@ -1,0 +1,241 @@
+---
+title: "MDRP Database - Updates Exploration <sup><span style='font-size:12pt'>`r format(Sys.Date(), '%Y.%m.%d')`</span></sup>"
+author: "`r glue::glue('Chionesu George <sup>{Sys.time()}</sup>}')`"
+output:
+  html_notebook:
+    df_print: paged
+    code_folding: hide
+  css: markdown.css
+  theme: flatly
+params:
+  proj_name: "MDRP Database - Updates Exploration"
+  dsn_pattern: ""
+  req_libs: !r c("DBI", "magrittr", "docstring", "plotly", "stringi", "openxlsx", "lubridate", "askpass", "keyring", "xml2", "httr", "jsonlite", "lexicon", "cachem", "memoise", "furrr", "doFuture", "future.callr", "tictoc", "purrr")
+  opt_libs: !r c("igraph", "kableExtra", "text2vec")
+  git_libs: !r c("book.of.utilities","book.of.features","book.of.workflow","smart.data","DBOE","event.vectors", "architect")
+  future.globals.maxSize: !r c(10 * 1024 * 10E6)
+  new_data_date: !r {(lubridate::today() - lubridate::years(1)) |> lubridate::rollback() + lubridate::days(1)}
+  sub_dirs: !r list(globals = "globals", data = "data", cache = "r_session_cache")
+---
+
+# Sections {.tabset .tabset-fade .tabset-pills}
+
+## 1. Initialize 
+
+This section executes global tasks that set up the workspace are executed:
+
+-   `.is_remote` is an active binding indicating whether or not the current context is a remote session via package [remoter](https://rdocumentation.org/packages/remoter)
+
+-   `.is_interactive` contains the result of [interactive](https://rdocumentation.org/packages/base/versions/3.6.2/topics/interactive): remote sessions are *non-interactive* `caches` is a disk/memory cache repository object used for holding the output of key workflow steps and to aid with error recovery
+
+`r htmltools::span(style="font-weight:bold", "Load Libraries")`
+
+This code block sets global parameters for the session and loads an initial set of libraries. Custom libraries are hosted on Github at [github.com/delriaan](https://github.com/delriaan?tab=repositories) and include the following:
+
+-   book.of.utilities
+-   book.of.features
+-   book.of.workflow
+-   smart.data
+-   DBOE
+-   event.vectors
+
+```{r SETUP, message=FALSE, warning=FALSE}
+.libPaths(data.table::last(.libPaths()[which(grepl("Program", .libPaths()))]));
+options(future.globals.maxSize = params$future.globals.maxSize);
+
+library(book.of.workflow)
+
+params[c("req_libs", "opt_libs", "git_libs")] |> 
+  purrr::compact() |> purrr::walk(\(x) purrr::walk(x, \(i) library(i, character.only = TRUE)))
+
+if ("doFuture" %in% loadedNamespaces()) registerDoFuture();
+
+if (!any(stringi::stri_detect_fixed("workflow", search()))) { attach(new.env(), name = "workflow"); }
+
+if (hasName(globalenv(), ".is_remote")){ rm(.is_remote)}
+
+(as.environment("workflow")) %$% { .is_interactive <- interactive()}
+
+makeActiveBinding(".is_remote", function(){ 
+	exists(".pbd_env") & grepl(pattern = "itdhpc", x = Sys.getenv("COMPUTERNAME"), ignore.case = TRUE) 
+}, env = as.environment("workflow"));
+
+if (.is_interactive){ 
+	message("Interactive session detected ...") 
+	setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+} else { message("Non-interactive session detected ...")}
+
+message(paste0("Current working directory is", getwd()))
+.file_root <- getwd()
+.image_file_root <- paste(.file_root, params$sub_dirs$data, "/")
+
+c("99. SANDBOX") |> walk(\(x){
+		if (file.exists(paste0(.file_root, "/", x, ".R"))){
+			cat(sprintf("%s exists: skipping", x), sep = "\n")
+		} else { 
+			cat(sprintf("Creating %s ...", x), sep = "\n")
+		  cat(paste0("# ", x), file = paste0(.file_root, "/",  x, ".R"), append = FALSE) 
+		}
+  })
+```
+
+`r htmltools::span(style="font-weight:bold", "Execute globalized initialization routines")`
+
+```{r INIT, message=FALSE, warning=FALSE}
+walk(params$sub_dirs, ~{ 
+  if (!dir.exists(.x)) { 
+    cat(glue::glue("Creating '{.x}' ..."), sep = "\n"); 
+    dir.create(.x); 
+  } else { 
+    cat(glue::glue("'{.x}' exists: skipping ..."), sep = "\n") 
+  }
+})
+
+dir(pattern = "0[1-3].+R$", full.names = TRUE) |> 
+  sprintf(fmt = "message(\"%s\"); source(\"%1$s\"); ") |>
+	rlang::parse_exprs() |> walk(eval)
+
+.idx <- which(
+  tcltk::tk_select.list(
+    choices = .workflow_options$workflow_mode
+    , multiple = FALSE
+    , title = "Choose a workflow parameter set: "
+    ) %in% .workflow_options$workflow_mode);
+
+invisible(.workflow_options[(.idx), action][[1]] |> eval());
+dir(params$sub_dirs$globals, full.names = TRUE) |> walk(source)
+rm(.idx)
+
+if (!exists("META")){ META <- new.env() }
+META$param_list <- { list(
+  seed = 90210
+  , no.stemming = FALSE 
+  , # Hyper-parameters for topic modeling: META$param_list$ 
+    topic_modeling = { list(
+    	vocab_params = list(doc_proportion_max = 0.25, doc_proportion_min = 0.02) %>% 
+    			setattr("help", { 
+    			  rlang::expr({ browseURL("http://text2vec.org/vectorization.html#vocabulary-based_vectorization"); ?text2vec::prune_vocabulary; })
+    			})
+    	, lda_params = list(n_topics = 20, n_iter = 1000, doc_topic_prior = 0.2, topic_word_prior = 0.001) %>% 
+    			setattr("help", { 
+    			  rlang::expr({ browseURL("http://text2vec.org/topic_modeling.html#latent_dirichlet_allocation"); ?text2vec::LDA; })
+    			})
+    	, lda_fit_params = list(n_iter = 1000, convergence_tol = 1e-5, n_check_convergence = 10) %>% 
+    			setattr("help", { 
+    			  rlang::expr({ browseURL("http://text2vec.org/topic_modeling.html#latent_dirichlet_allocation"); ?text2vec::LDA; }) 
+    			})
+    	)}
+  )}
+
+```
+
+## 2. Load Data {.tabset}
+
+This code block retrieves data from external sources
+
+### Retrieve Required Datasets
+
+**Objects Created** 
+
+>
+- **`.dsn_table`**        : ODBC DSN entries read from Windows registry
+- **`db_conns`**          : A list of DBI-compliant connections
+- **`.calendar_keys`**		: Makes it easier to subset the calendar object
+- **`.calendar_filter`**	: Date boundaries of `.calendar_keys` for use in T-SQL queries
+
+
+```{r LOAD_REQ_DATA, warning=FALSE, message=FALSE}
+.GlobalEnv %must.have% "db_conns"
+"workflow" %must.have% "dsn_table"
+"workflow" %+=% list(dsn_table = { data.table::rbindlist(
+	readRegistry(hive = "HLM", key = "SOFTWARE\\ODBC\\ODBC.INI", maxdepth = 2)
+	, use.names = TRUE, fill = TRUE)[
+	, c(.SD[!is.na(Database), ClientCertificate:ServerSPN]
+			, .SD[, -c(1:16), with = FALSE] %>% 
+			   melt(measure.vars = names(.), variable.name = "DSN", value.name = "DriverDescription") %>% 
+			   na.omit())] |> 
+  setkey(Database)
+})
+check.env(refer.to("workflow"))
+
+if (!hasName(globalenv(), "db_conns")){ 
+  assign("db_conns", imap(dsn_table[(DSN %like% params$dsn_pattern), purrr::set_names(DSN)], ~dbConnect(drv = odbc::odbc(), dsn = .y)))
+  check.env(.GlobalEnv)
+}
+
+tic("$get.metadata()"); 
+dbms.monitor <- DBOE$new()$get.metadata(!!!db_conns, chatty = TRUE); 
+toc(log = TRUE);
+
+if (.get_new_data %||% TRUE){ 
+	message("\tRetrieving calendar ..."); 
+  
+  refer.to("BASE") %must.have% "dim_calendar"
+  dbms.monitor$make.virtual_database("AMCS_DW_IC", target_env = BASE, dim_calendar)
+  check.env(BASE)
+  
+  BASE %$% { 
+    dim_calendar <- dplyr::filter(dim_calendar, full_dt >= "20140701", full_dt < !!(lubridate::today() + lubridate::years(1))) |> 
+      architect::define(
+        ~full_dt + day_serial + holiday_flag + weekend_flag+ calendar_year + fiscal_year + calendar_sur
+        , full_dt = as.Date(full_dt)
+        ) |>
+      setkey(calendar_sur)
+    }
+}
+
+# .new_data_date
+"workflow" %must.have% ".new_data_date"
+"workflow" %+=% { list(.new_data_date = params$new_data_date) }
+check.env(refer.to("workflow"))
+
+# .calendar_keys
+"workflow" %must.have% ".calendar_keys"
+"workflow" %+=% { list(.calendar_keys = dim_calendar[(full_dt <= today()) & (full_dt >= .new_data_date), full_dt])}
+check.env(refer.to("workflow"))
+
+# .calendar_filter
+"workflow" %must.have% ".calendar_filter"
+assign(".calendar_filter", { 
+	range(.calendar_keys) |>
+	format("%Y%m%d") |> as.integer()
+}, envir = refer.to("workflow"))
+check.env(refer.to("workflow"))
+
+```
+
+### Retrieve Project-Specific Datasets 
+
+```{r LOAD_PROJ_DATA, warning=FALSE, message=FALSE}
+```
+
+### Load Saved Workspace Objects
+```{r LOAD_IMAGES, warning=FALSE, message=FALSE}
+tic("Load Images")
+message("Load Images (optional)");
+#
+purrr::list_merge(
+  list(idx = 0, active = FALSE, task.name = "", pattern = "", name = "")
+  # , !!!list(idx = 1, active = TRUE, task.name = "", pattern = "", name = "")
+  )|>
+  as.data.table() |>
+  pwalk(~{
+    if (..1 != 0){ 
+  	  source.file = dir(path = paste0(getwd(), params$data_dir) %||% .image_file_root
+  	                    , pattern = ..4
+  	                    , full.names = TRUE
+  	                    ) |> last();
+    	tic(sprintf(..3, ..5, source.file));
+  	  if (!identical(source.file, character())){ 
+      	load(source.file, envir = refer.to(..5), verbose = TRUE)
+  	  } else {
+    	  load(source.file, envir = globalenv(), verbose = TRUE) 
+  	  }
+    	toc();
+    }
+	})
+#	
+toc(log = TRUE)
+```
+
+## 3. Next Steps ...
