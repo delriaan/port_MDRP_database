@@ -1,4 +1,11 @@
-<title>Medicaid Drug Rebate Program (MDRP) Database</title>
+---
+title: "Medicaid Drug Rebate Program (MDRP) Database"
+output: html_notebook
+---
+
+```{r setup, warning=FALSE, message=FALSE}
+
+```
 
 # Purpose and Metadata 
 
@@ -8,3 +15,4 @@ This project explores the Medicaid Drug Rebate Program (MDRP) database:
 - [Data Dictionary](https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf)
 - [API Information](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a)
 
+# Data Retrieval {.tabset .tabset-fade .tabset-pills}
