@@ -1,0 +1,8 @@
+"0","api_data <- urls$data |> "
+"0","  as.character() |> "
+"0","  stri_extract_all_regex(""http.+csv"", simplify = TRUE) |> "
+"0","  as.vector() |> "
+"0","  GET() |>"
+"0","  content() |>"
+"0","  rawToChar() |>"
+"0","  (\(x) read.csv(text = x))()"

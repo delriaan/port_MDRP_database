@@ -1,0 +1,6 @@
+"0","dplyr::slice_sample(api_data[, !""id""], prop = 0.33) |>"
+"0","  dfSummary(labels.col = TRUE) |> "
+"0","  view(method = ""render"", report.title = ""Medicaid Drug Rebate Program (MDRP) Data"") |> "
+"0","  print()"
+"2","Error : Can't find dplyr
+"
