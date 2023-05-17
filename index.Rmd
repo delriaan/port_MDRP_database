@@ -6,10 +6,9 @@ output:
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
-
 .cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell"
                 , "SmartEDA", "htmltools", "slider", "stringi", "magrittr"
-                , "DT", "data.table", "pdftools")
+                , "DT", "data.table", "pdftools", "lubridate")
 .git_libs <- paste0("book.of.", c("utilities", "features", "workflow"))
               
 if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
@@ -30,9 +29,7 @@ load_unloaded(!!!.cran_libs, autoinstall = TRUE)
 
 urls <- list(
   data = list(
-    Description = "https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html"
-    , `Data Dictionary` = "https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf"
-    , `API Information` = "https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a"
+    `Data Dictionary` = "https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf"
     , Data = "https://download.medicaid.gov/data/drugproducts1q_2023.csv"
     ) |>
     imap(\(x, y) tags$li(tags$a(href = x, y))) |> tags$ol()
@@ -42,9 +39,9 @@ urls <- list(
 
 #  {.tabset .tabset-fade .tabset-pills}
 
-## Purpose and Metadata 
+## Purpose &<br> Metadata 
 
-This project explores the Medicaid Drug Rebate Program (MDRP) database:
+This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (dataset description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
 
 `r urls$data`
 
@@ -68,11 +65,8 @@ tags$table(
   ) |> tags$p()
 ```
 
-## Data Exploration {.tabset .tabset-fade .tabset-pills}
+## Data Summary <br><sup>Summarytools</sup> {.tabset .tabset-fade .tabset-pills}
 
-### Retrieval
-
-**Data**
 
 ```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE}
 api_data <- urls$data |> 
@@ -85,11 +79,7 @@ api_data <- urls$data |>
   rawToChar() |>
   (\(x) read.csv(text = x))() |>
   as.data.table(na.rm = FALSE)
-```
 
-**Dictionary**
-  
-```{r RETRIEVE_DICTIONARY, cache=TRUE,cache.lazy=TRUE}
 api_dictionary <- invisible(urls$data |> 
   as.character() |> 
   stri_extract_all_regex("http.+pdf", simplify = TRUE) |> 
@@ -132,24 +122,27 @@ api_dictionary <- invisible(urls$data |>
         .out <- ifelse(identical(character(), i), y, paste(i, collapse = "\n"))
         ifelse(stri_length(.out) > 50, paste0(.out, " ..."), .out)
       })()
-  });
+  })
 
-iwalk(.summary_labels, \(x, y){ .label = x; api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i }) })
+iwalk(.summary_labels, \(x, y){ 
+  .label = x; api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i 
+  }) 
+})
 
 ```
 
-### Exploration {.tabset .tabset-fade}
 
-#### Summarytools 
+```{r EXPLORATION, warning=FALSE, message=FALSE, fig.dim=c(600,960)}
+api_data %<>% { 
+  modify_at(., c(4:7), as.character) %>% 
+    modify_at(ls(., pattern = "Date"), lubridate::mdy)
+}
 
-```{r EXPLORATION, warning=FALSE, message=FALSE}
-dplyr::slice_sample(api_data[, !"id"], prop = 0.33) |>
+api_data[runif(n= nrow(api_data)) <= 0.33, !"id"] |>
   dfSummary(labels.col = TRUE) |> 
-  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data") |> 
-  print()
-
+  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data") 
 ```
 
-#### SmartEDA
+## Temporal<br>Analysis 
 
 
