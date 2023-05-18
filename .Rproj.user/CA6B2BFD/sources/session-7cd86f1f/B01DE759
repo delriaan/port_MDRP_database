@@ -1,0 +1,28 @@
+{
+    "id": "B01DE759",
+    "path": "C:/Users/sapie/GitHub/port_MDRP_database/SANDBOX.R",
+    "project_path": "SANDBOX.R",
+    "type": "r_source",
+    "hash": "1229124803",
+    "contents": "",
+    "dirty": false,
+    "created": 1684374048017.0,
+    "source_on_save": true,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "9,0",
+        "scrollLine": "0",
+        "softWrapLines": "true",
+        "useRainbowParens": "true"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1684375454,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1684375454273,
+    "read_only": false,
+    "read_only_alternatives": []
+}

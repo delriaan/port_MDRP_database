@@ -31,9 +31,9 @@ urls <- list(
   data = list(
     `Data Dictionary` = "https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf"
     , Data = "https://download.medicaid.gov/data/drugproducts1q_2023.csv"
-    ) |>
-    imap(\(x, y) tags$li(tags$a(href = x, y))) |> tags$ol()
+    ) |> imap(\(x, y) tags$li(tags$a(href = x, y))) |> tags$ol()
   , git_libs = map(.git_libs, \(x) tags$li(tags$a(title = paste0("delriaan/", x), x))) |> list() |> tags$ul()
+  , openFDA = "https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip"
   )
 ```
 
@@ -44,6 +44,8 @@ urls <- list(
 This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (dataset description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
 
 `r urls$data`
+
+Additionally, I will use the U.S. Food and Drug Administration's [openFDA](https://open.fda.gov) to augment the data based on NDC.
 
 ### Required LIbraries
 
@@ -88,41 +90,53 @@ api_dictionary <- invisible(urls$data |>
   content() |> 
   pdf_text())
 
+openFDA_ndc <- (\(x){ 
+  json.file <- "drug-ndc-0001-of-0001.json"
+
+  if (!json.file %in% dir()){ GET(urls$openFDA, write_disk(x, TRUE)) }
+  
+  unzip(zipfile = x)
+  
+  read_json(path = json.file)
+})("ndc_json.zip")
+
+drug_table <- function(x){ purrr::map(x, data.table::as.data.table) |> data.table::rbindlist(fill = TRUE) }
+
 .summary_labels <- names(api_data) |> 
-  rlang::set_names() |>
-  map_chr(\(x) stri_replace_all_fixed(x, ".", " ", vectorize_all = FALSE)) |>
-  imap_chr(\(x, y){ 
-    api_dictionary |> 
-      stri_extract_all_regex(
-        sprintf(
-          fmt = "(%s)[:]\n.+"
-          , stri_replace_all_fixed(
-              x
-              , c("Pkg"
-                  , "Intro"
-                  , "COD Status"
-                  , "FDA Application Number"
-                  , "FDA Therapeutic Equivalence Code"
-                  )
-              , c("Package"
-                  , "Intro."
-                  , "Covered Outpatient Drug [(]COD[)] Status"
-                  , "FDA Application Number/OTC Monograph Number"
-                  , "TEC"
-                  )
-              , vectorize_all = FALSE
-              )
-          )
-        , simplify = TRUE
-        ) |>
-      stats::na.omit() |>
-      as.vector() |>
-      discard(\(x) x == "") %>%
-      (\(i){ 
-        .out <- ifelse(identical(character(), i), y, paste(i, collapse = "\n"))
-        ifelse(stri_length(.out) > 50, paste0(.out, " ..."), .out)
-      })()
-  })
+    rlang::set_names() |>
+    map_chr(\(x) stri_replace_all_fixed(x, ".", " ", vectorize_all = FALSE)) |>
+    imap_chr(\(x, y){ 
+      api_dictionary |> 
+        stri_extract_all_regex(
+          sprintf(
+            fmt = "(%s)[:]\n.+"
+            , stri_replace_all_fixed(
+                x
+                , c("Pkg"
+                    , "Intro"
+                    , "COD Status"
+                    , "FDA Application Number"
+                    , "FDA Therapeutic Equivalence Code"
+                    )
+                , c("Package"
+                    , "Intro."
+                    , "Covered Outpatient Drug [(]COD[)] Status"
+                    , "FDA Application Number/OTC Monograph Number"
+                    , "TEC"
+                    )
+                , vectorize_all = FALSE
+                )
+            )
+          , simplify = TRUE
+          ) |>
+        stats::na.omit() |>
+        as.vector() |>
+        discard(\(x) x == "") %>%
+        (\(i){ 
+          .out <- ifelse(identical(character(), i), y, paste(i, collapse = "\n"))
+          ifelse(stri_length(.out) > 50, paste0(.out, " ..."), .out)
+        })()
+    });
 
 iwalk(.summary_labels, \(x, y){ 
   .label = x; api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i 
