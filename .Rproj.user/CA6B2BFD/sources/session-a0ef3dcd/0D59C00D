@@ -1,0 +1,31 @@
+{
+    "id": "0D59C00D",
+    "path": "C:/Users/sapie/GitHub/port_MDRP_database/index.Rmd",
+    "project_path": "index.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1684153793294.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "tempName": "Untitled1",
+        "chunk_output_type": "inline",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "103,0",
+        "scrollLine": "0",
+        "last_setup_crc32": "",
+        "docOutlineVisible": "1",
+        "docOutlineSize": "199"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1684373981,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1684373981787,
+    "read_only": false,
+    "read_only_alternatives": []
+}
