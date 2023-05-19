@@ -1,5 +1,6 @@
 api_data$NDC |> unique() |> sample(100) |> stri_length() |> table()
 api_data$NDC |> unique() |> sample(100) |> stri_sub(length = 1) |> table()
+drug_table(openFDA_ndc$results)
 
 replicate(
   n = 30
