@@ -6,10 +6,12 @@ output:
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
+options(future.globals.maxSize = 2 * 1024 * 10E6);
+
 .cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell"
                 , "SmartEDA", "htmltools", "slider", "stringi", "magrittr"
-                , "DT", "data.table", "pdftools", "lubridate")
-.git_libs <- paste0("book.of.", c("utilities", "features", "workflow"))
+                , "DT", "data.table", "pdftools", "lubridate", "future", "furrr", "future.callr")
+.git_libs <- paste0("book.of.", c("utilities", "features", "workflow", "architect"))
               
 if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
   if (!"remotes" %in% dir(sprintf("%s/library", R.home()))){ 
@@ -17,11 +19,12 @@ if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
     install.packages("remotes", repos = "https://cloud.r-project.org") 
   }
   
-  htmltools::tags$span(style = "text-deoration:italic; color:#333333; ", "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow'")
+  htmltools::tags$span(style = "text-deoration:italic; color:#333333; ", "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow', 'architect'")
   
   remotes::install_github("delriaan/book.of.utilities", subdir = "pkg")
   remotes::install_github("delriaan/book.of.features", subdir = "pkg")
   remotes::install_github("delriaan/book.of.workflow", subdir = "pkg")
+  remotes::install_github("delriaan/architect", subdir = "pkg")
 }
 
 library(book.of.workflow)
@@ -44,8 +47,6 @@ urls <- list(
 This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (dataset description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
 
 `r urls$data`
-
-Additionally, I will use the U.S. Food and Drug Administration's [openFDA](https://open.fda.gov) to augment the data based on NDC.
 
 ### Required LIbraries
 
@@ -100,7 +101,8 @@ openFDA_ndc <- (\(x){
   read_json(path = json.file)
 })("ndc_json.zip")
 
-drug_table <- function(x){ purrr::map(x, data.table::as.data.table) |> data.table::rbindlist(fill = TRUE) }
+drug_table <- function(x){ purrr::map(x, data.table::as.data.table) |> 
+    data.table::rbindlist(fill = TRUE) }
 
 .summary_labels <- names(api_data) |> 
     rlang::set_names() |>
@@ -159,4 +161,23 @@ api_data[runif(n= nrow(api_data)) <= 0.33, !"id"] |>
 
 ## Temporal<br>Analysis 
 
+```{r TIME_STUDY, warning=FALSE, message=FALSE}
+setnames(api_data, stri_replace_all_fixed(names(api_data) |> tolower(), ".", "_"))
+
+ndc_events <- define(
+  api_data
+  , ~ndc + fda_product_name + drug_category + fda_approval_date + 
+      market_date + termination_date + reactivation_date
+  , days_to_market = mean(market_date - fda_approval_date) ~ fda_product_name
+  , on_market_age = { 
+      x <- ifelse(
+            is.na(reactivation_date)
+            , modify_if(termination_date, is.na, \(x) today()) - market_date 
+            , today() - reactivation_date
+            )
+      mean(x)
+    } ~ fda_product_name
+  )
+
+```
 

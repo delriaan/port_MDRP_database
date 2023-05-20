@@ -1,17 +1,104 @@
-api_data$NDC |> unique() |> sample(100) |> stri_length() |> table()
-api_data$NDC |> unique() |> sample(100) |> stri_sub(length = 1) |> table()
-drug_table(openFDA_ndc$results)
+openFDA_ndc.combined <- data.table::rbindlist(fill = TRUE, modify_at(openFDA_ndc$results, 1:length(openFDA_ndc$results), as.data.table))
 
-replicate(
-  n = 30
-  , { inspect$product_ndc |> unique() |> sample(100) |> stri_replace_all_regex("-", "", vectorise_all = FALSE) |> 
-      stri_length() |> table() |> t()
-    })
+plan(list(tweak(multisession, workers = 5), callr))
+# future_walk(1:5, \(x) book.of.workflow::load_unloaded(magrittr, furrr, future, data.table))
 
-inspect$product_ndc |> unique() |> sample(100) |> stri_replace_all_regex("-", "", vectorise_all = FALSE) |> stri_sub(length = 1) |> table()
+# NDC format: lengths (excluding hyphens)
+ndc_lengths %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+  future_map(\(x){ 
+    replicate(
+      n = 30
+      , expr = sample(x, 100) |>
+                stringi::stri_replace_all_regex("-", "", vectorise_all = FALSE) |> 
+                stringi::stri_length() |> 
+                outer(rlang::set_names(7:11), `==`) |> 
+                colSums() %>% 
+                magrittr::divide_by(sum(.))
+      , simplify = FALSE
+      ) |>
+    purrr::reduce(rbind) |>
+    colMeans() |>
+    as.list()
+  }, .options = furrr_options(scheduling = Inf, seed = TRUE)) |>
+  rbindlist(idcol = "source") 
+} %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
 
-modify_at(api_data, "NDC", \(x) stri_pad_left(x, width = 8, pad = "0"))[
-  inspect[1:10] |> modify_at("product_ndc", \(x) stri_replace_all_regex(x, "-", "", vectorise_all = FALSE))
-  , on = "NDC==product_ndc"
-  , nomatch = NULL
-  ]
+# NDC format: first character/digit
+ndc_first_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+    future_map(\(x){ 
+      replicate(
+        n = 30
+        , expr = sample(x, 100) |>
+                  stringi::stri_sub(length = 1) |> 
+                  outer(rlang::set_names(0:9), `==`) |> 
+                  colSums() %>% 
+                  divide_by(sum(.))
+        , simplify = FALSE
+        ) |>
+      purrr::reduce(rbind) |>
+      colMeans() |>
+      as.list()
+    }, .options = furrr_options(scheduling = Inf, seed = TRUE)) |>
+    rbindlist(idcol = "source")
+} %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
+
+# NDC format: last character/digit
+ndc_last_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+    future_map(\(x){ 
+      replicate(
+        n = 30
+        , expr = sample(x, 100) %>%
+                  stringi::stri_sub(from = stringi::stri_length(.), length = 1) |> 
+                  outer(rlang::set_names(0:9), `==`) |> 
+                  colSums() %>% 
+                  divide_by(sum(.))
+        , simplify = FALSE
+        ) |>
+      purrr::reduce(rbind) |>
+      colMeans() |>
+      as.list()
+    }, .options = furrr_options(scheduling = Inf, seed = TRUE)) |>
+    rbindlist(idcol = "source")
+} %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
+
+# NDC format: consecutive zeros
+ndc_zero_seq %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+    future_map(\(x){ 
+      replicate(
+        n = 30
+        , expr = sample(x, 100) |>
+                  stringi::stri_extract_first_regex("0{1,11}") |> 
+                  stringi::stri_length() |>
+                  purrr::modify_if(\(x) is.na(x)||rlang::is_empty(x), \(x) 0) |>
+                  outer(rlang::set_names(0:5), `==`) |> 
+                  colSums() %>% 
+                  divide_by(sum(.))
+        , simplify = FALSE
+        ) |>
+      purrr::reduce(rbind) |>
+      colMeans() |>
+      as.list()
+    }, .options = furrr_options(scheduling = Inf, seed = TRUE)) |>
+    rbindlist(idcol = "source")
+} %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
+
+invisible(value(.GlobalEnv))
+
+plan(sequential)
+
+mget(ls(pattern = "^ndc.+(f|l|z)"))
+
+# NDC format: consecutive zeros
+ndc_pad_11 <- { stringdist::stringsimmatrix(
+  unique(api_data$NDC) |> sample(1000)
+  , unique(openFDA_ndc.combined$product_ndc) |> 
+      stringi::stri_replace_all_regex("-", "", vectorise_all = FALSE) |> 
+      sample(1000)
+  # , q = 6
+  , method = "lcs"
+  , useNames = "strings"
+  , nthread = 10
+  )}
+
+
+ndc_pad_11 |> apply(1, \(x) x[(x == max(x)) & (x >= 0.8)])
