@@ -1,3 +1,4 @@
+# NDC Augmentation ----
 openFDA_ndc.combined <- data.table::rbindlist(fill = TRUE, modify_at(openFDA_ndc$results, 1:length(openFDA_ndc$results), as.data.table))
 
 plan(list(tweak(multisession, workers = 5), callr))
@@ -88,17 +89,5 @@ plan(sequential)
 
 mget(ls(pattern = "^ndc.+(f|l|z)"))
 
-# NDC format: consecutive zeros
-ndc_pad_11 <- { stringdist::stringsimmatrix(
-  unique(api_data$NDC) |> sample(1000)
-  , unique(openFDA_ndc.combined$product_ndc) |> 
-      stringi::stri_replace_all_regex("-", "", vectorise_all = FALSE) |> 
-      sample(1000)
-  # , q = 6
-  , method = "lcs"
-  , useNames = "strings"
-  , nthread = 10
-  )}
-
-
-ndc_pad_11 |> apply(1, \(x) x[(x == max(x)) & (x >= 0.8)])
+# Drug Events ----
+ndc_events[!is.na(reactivation_date)] |> View()

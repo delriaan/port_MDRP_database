@@ -11,7 +11,7 @@ options(future.globals.maxSize = 2 * 1024 * 10E6);
 .cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell"
                 , "SmartEDA", "htmltools", "slider", "stringi", "magrittr"
                 , "DT", "data.table", "pdftools", "lubridate", "future", "furrr", "future.callr")
-.git_libs <- paste0("book.of.", c("utilities", "features", "workflow", "architect"))
+.git_libs <- paste0("book.of.", c("utilities", "features", "workflow")) |> c("architect")
               
 if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
   if (!"remotes" %in% dir(sprintf("%s/library", R.home()))){ 
@@ -19,7 +19,10 @@ if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
     install.packages("remotes", repos = "https://cloud.r-project.org") 
   }
   
-  htmltools::tags$span(style = "text-deoration:italic; color:#333333; ", "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow', 'architect'")
+  htmltools::tags$span(
+    style = "text-deoration:italic; color:#333333; "
+    , "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow', 'architect'"
+    );
   
   remotes::install_github("delriaan/book.of.utilities", subdir = "pkg")
   remotes::install_github("delriaan/book.of.features", subdir = "pkg")
@@ -29,6 +32,7 @@ if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
 
 library(book.of.workflow)
 load_unloaded(!!!.cran_libs, autoinstall = TRUE)
+load_unloaded(!!!.git_libs)
 
 urls <- list(
   data = list(
@@ -168,16 +172,25 @@ ndc_events <- define(
   api_data
   , ~ndc + fda_product_name + drug_category + fda_approval_date + 
       market_date + termination_date + reactivation_date
-  , days_to_market = mean(market_date - fda_approval_date) ~ fda_product_name
-  , on_market_age = { 
-      x <- ifelse(
-            is.na(reactivation_date)
-            , modify_if(termination_date, is.na, \(x) today()) - market_date 
-            , today() - reactivation_date
-            )
-      mean(x)
-    } ~ fda_product_name
+  , list(
+      days_to_market = mean(market_date - fda_approval_date)
+      , on_market_age = { 
+          x <- ifelse(
+                is.na(reactivation_date)
+                , modify_if(termination_date, is.na, \(x) today()) - market_date 
+                , today() - reactivation_date
+                )
+          mean(x)
+        } 
+      , days_market_absent = { 
+          x <- ifelse(
+                is.na(termination_date)
+                , duration(0, "days")
+                , modify_if(reactivation_date, is.na, \(x) today()) - termination_date
+                )
+          mean(x)
+        } 
+      ) ~ drug_category
   )
 
 ```
-
