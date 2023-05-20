@@ -1,16 +1,15 @@
 # NDC Augmentation ----
-openFDA_ndc.combined <- data.table::rbindlist(fill = TRUE, modify_at(openFDA_ndc$results, 1:length(openFDA_ndc$results), as.data.table))
 
 plan(list(tweak(multisession, workers = 5), callr))
 # future_walk(1:5, \(x) book.of.workflow::load_unloaded(magrittr, furrr, future, data.table))
 
 # NDC format: lengths (excluding hyphens)
-ndc_lengths %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+ndc_lengths %<-% { list(api_NDC = api_data$ndc, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
   future_map(\(x){ 
     replicate(
       n = 30
       , expr = sample(x, 100) |>
-                stringi::stri_replace_all_regex("-", "", vectorise_all = FALSE) |> 
+                stringi::stri_replace_all_regex("[-]|^([0]+)", "", vectorise_all = FALSE) |> 
                 stringi::stri_length() |> 
                 outer(rlang::set_names(7:11), `==`) |> 
                 colSums() %>% 
@@ -25,7 +24,7 @@ ndc_lengths %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combin
 } %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
 
 # NDC format: first character/digit
-ndc_first_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+ndc_first_digit %<-% { list(api_NDC = api_data$ndc, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
     future_map(\(x){ 
       replicate(
         n = 30
@@ -44,7 +43,7 @@ ndc_first_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.co
 } %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
 
 # NDC format: last character/digit
-ndc_last_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+ndc_last_digit %<-% { list(api_NDC = api_data$ndc, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
     future_map(\(x){ 
       replicate(
         n = 30
@@ -63,7 +62,7 @@ ndc_last_digit %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.com
 } %lazy% TRUE %seed% TRUE %packages% c("magrittr", "furrr", "future", "data.table")
 
 # NDC format: consecutive zeros
-ndc_zero_seq %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
+ndc_zero_seq %<-% { list(api_NDC = api_data$ndc, openFDA_NDC = openFDA_ndc.combined$product_ndc) |>
     future_map(\(x){ 
       replicate(
         n = 30
@@ -85,9 +84,15 @@ ndc_zero_seq %<-% { list(api_NDC = api_data$NDC, openFDA_NDC = openFDA_ndc.combi
 
 invisible(value(.GlobalEnv))
 
+mget(ls(pattern = "^ndc.+(f|l|z)"))
+
 plan(sequential)
 
-mget(ls(pattern = "^ndc.+(f|l|z)"))
+# ----
+
+
+
+api_data[1:1000, map2_chr(labeler_code, product_code, check_ndc_format)]
 
 # Drug Events ----
 ndc_events[!is.na(reactivation_date)] |> View()

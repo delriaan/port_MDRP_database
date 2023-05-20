@@ -75,122 +75,213 @@ tags$table(
 ## Data Summary <br><sup>Summarytools</sup> {.tabset .tabset-fade .tabset-pills}
 
 
-```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE}
-api_data <- urls$data |> 
-  as.character() |> 
-  stri_extract_all_regex("http.+csv", simplify = TRUE) |> 
-  as.vector() %T>% 
-  (\(x) tags$p(sprintf("Retrieve data from '%s'", x)) |> print())() |>
-  GET() |>
-  content() |>
-  rawToChar() |>
-  (\(x) read.csv(text = x))() |>
-  as.data.table(na.rm = FALSE)
+```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE, warning=FALSE, message=FALSE}
 
-api_dictionary <- invisible(urls$data |> 
-  as.character() |> 
-  stri_extract_all_regex("http.+pdf", simplify = TRUE) |> 
-  as.vector() |>
-  GET() |>
-  content() |> 
-  pdf_text())
-
-openFDA_ndc <- (\(x){ 
-  json.file <- "drug-ndc-0001-of-0001.json"
-
-  if (!json.file %in% dir()){ GET(urls$openFDA, write_disk(x, TRUE)) }
+# MDRP database data
+if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
+  if (!"api_data" %in% ls()){ 
+    api_data <- urls$data |> 
+      as.character() |> 
+      stri_extract_all_regex("http.+csv", simplify = TRUE) |> 
+      as.vector() %T>% 
+      (\(x) tags$p(sprintf("Retrieve data from '%s'", x)) |> print())() |>
+      GET() |>
+      content() |>
+      rawToChar() |>
+      (\(x) read.csv(text = x, ))() |>
+      as.data.table(na.rm = FALSE) |> 
+      modify_at(c(4:7), as.character) %>% 
+      modify_at(ls(., pattern = "Date"), lubridate::mdy) %>% 
+      setnames(stri_replace_all_fixed(names(.) |> tolower(), ".", "_"))
+  }
   
-  unzip(zipfile = x)
   
-  read_json(path = json.file)
-})("ndc_json.zip")
-
-drug_table <- function(x){ purrr::map(x, data.table::as.data.table) |> 
-    data.table::rbindlist(fill = TRUE) }
-
-.summary_labels <- names(api_data) |> 
-    rlang::set_names() |>
-    map_chr(\(x) stri_replace_all_fixed(x, ".", " ", vectorize_all = FALSE)) |>
-    imap_chr(\(x, y){ 
-      api_dictionary |> 
-        stri_extract_all_regex(
-          sprintf(
-            fmt = "(%s)[:]\n.+"
-            , stri_replace_all_fixed(
-                x
-                , c("Pkg"
-                    , "Intro"
-                    , "COD Status"
-                    , "FDA Application Number"
-                    , "FDA Therapeutic Equivalence Code"
+  if (!"api_dictionary" %in% ls()){ 
+    api_dictionary <- invisible(urls$data |> 
+      as.character() |> 
+      stri_extract_all_regex("http.+pdf", simplify = TRUE) |> 
+      as.vector() |>
+      GET() |>
+      content() |> 
+      pdf_text())
+    
+    .summary_labels <- names(api_data) |> 
+        rlang::set_names() |>
+        map_chr(\(x) stri_replace_all_fixed(x, ".", " ", vectorize_all = FALSE)) |>
+        imap_chr(\(x, y){ 
+          api_dictionary |> 
+            stri_extract_all_regex(
+              sprintf(
+                fmt = "(%s)[:]\n.+"
+                , stri_replace_all_fixed(
+                    x
+                    , c("Pkg"
+                        , "Intro"
+                        , "COD Status"
+                        , "FDA Application Number"
+                        , "FDA Therapeutic Equivalence Code"
+                        )
+                    , c("Package"
+                        , "Intro."
+                        , "Covered Outpatient Drug [(]COD[)] Status"
+                        , "FDA Application Number/OTC Monograph Number"
+                        , "TEC"
+                        )
+                    , vectorize_all = FALSE
                     )
-                , c("Package"
-                    , "Intro."
-                    , "Covered Outpatient Drug [(]COD[)] Status"
-                    , "FDA Application Number/OTC Monograph Number"
-                    , "TEC"
-                    )
-                , vectorize_all = FALSE
                 )
-            )
-          , simplify = TRUE
-          ) |>
-        stats::na.omit() |>
-        as.vector() |>
-        discard(\(x) x == "") %>%
-        (\(i){ 
-          .out <- ifelse(identical(character(), i), y, paste(i, collapse = "\n"))
-          ifelse(stri_length(.out) > 50, paste0(.out, " ..."), .out)
-        })()
-    });
-
-iwalk(.summary_labels, \(x, y){ 
-  .label = x; api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i 
-  }) 
-})
-
-```
-
-
-```{r EXPLORATION, warning=FALSE, message=FALSE, fig.dim=c(600,960)}
-api_data %<>% { 
-  modify_at(., c(4:7), as.character) %>% 
-    modify_at(ls(., pattern = "Date"), lubridate::mdy)
+              , simplify = TRUE
+              ) |>
+            stats::na.omit() |>
+            as.vector() |>
+            discard(\(x) x == "") %>%
+            (\(i){ 
+              .out <- ifelse(identical(character(), i), y, paste(i, collapse = "\n"))
+              ifelse(stri_length(.out) > 50, paste0(.out, " ..."), .out)
+            })()
+        });
+    
+    iwalk(.summary_labels, \(x, y){ 
+      .label = x; 
+      api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i }) 
+    })
+  }
+  
+} else { 
+  dir(pattern = "mdrp_api_data") |> load() 
 }
 
+# openFDA supplementary data
+if (rlang::is_empty(dir(pattern = "openFDA_ndc[.][Rr]data$"))){
+  if (!"openFDA_ndc" %in% ls()){ openFDA_ndc <- (\(x){ 
+      json.file <- "drug-ndc-0001-of-0001.json";
+    
+      if (!json.file %in% dir()){ 
+        GET(urls$openFDA, write_disk(x, TRUE)) 
+        unzip(zipfile = x)
+      }
+      
+      read_json(path = json.file);
+    })("ndc_json.zip") |> (\(x){
+      data.table::rbindlist(modify_at(x$results, 1:length(x$results), as.data.table), fill = TRUE) |>
+        setattr("metadata", x$meta)
+    })()
+  }
+} else { 
+  dir(pattern = "openFDA_ndc") |> load() 
+}
+
+```
+
+```{r EXPLORATION, warning=FALSE, message=FALSE, fig.dim=c(600,960)}
 api_data[runif(n= nrow(api_data)) <= 0.33, !"id"] |>
   dfSummary(labels.col = TRUE) |> 
-  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data") 
+  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data");
+
+list(
+  `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
+      sort() |> 
+      stri_split_fixed("-") |> 
+      map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
+      table() |>
+      ratio(type = "of.sum", decimals = 6)
+  , `MDRP: NDC Formats` = api_data[, paste(stri_length(labeler_code), stri_length(product_code), sep = "-")] |>
+      sort() |> 
+      table() |>
+      ratio(type = "of.sum", decimals = 6)
+  ) |> 
+  imap(\(x, y){ 
+    tags$li(
+      tags$b(y)
+      , HTML(": <br>&nbsp;&nbsp; ")
+      , sprintf("[%s]: %.2f %%", names(x), 100 * x) |> paste(collapse = "<br>&nbsp;&nbsp; ") |> HTML()
+      )
+    }) |>
+  tags$ul() |>
+  tags$p()
 ```
+
+Create a function to check NDC formats and conform: 
+
+```{r}
+check_ndc_format <- \(lc, pc){ 
+  pc <- modify_if(pc, \(i) stri_length(i) < 3, \(i) stri_pad_left(i, width = 3, pad = "0"))
+  lc <- modify_if(
+          lc
+          , \(i) stri_length(i) < 4
+          , \(i) stri_pad_left(i, width = ifelse(stri_length(pc) == 3, 5, 4), pad = "0")
+          )
+  
+  paste(lc, pc, sep = "-")
+}
+```
+
+This is done in order to join the data sets using a conformed NDC sequence.
+
+```{r JOIN_DRUG_DATA, warning=FALSE, message=FALSE}
+master_drug_data <- (\(x, i) x[
+                  i, on = "alt_ndc==product_ndc"
+                  , nomatch = 0
+                  , allow.cartesian = TRUE
+                  , `:=`(pharm_class = pharm_class, dea_schedule = dea_schedule, product_type = product_type, route = route, marketing_category = marketing_category)
+                  , by = .EACHI
+                  ])(api_data[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
+                    , openFDA_ndc
+                    )
+
+master_drug_data %<>% modify_at("pharm_class", unlist)
+
+```
+
 
 ## Temporal<br>Analysis 
 
 ```{r TIME_STUDY, warning=FALSE, message=FALSE}
-setnames(api_data, stri_replace_all_fixed(names(api_data) |> tolower(), ".", "_"))
 
-ndc_events <- define(
-  api_data
-  , ~ndc + fda_product_name + drug_category + fda_approval_date + 
-      market_date + termination_date + reactivation_date
-  , list(
-      days_to_market = mean(market_date - fda_approval_date)
-      , on_market_age = { 
-          x <- ifelse(
-                is.na(reactivation_date)
-                , modify_if(termination_date, is.na, \(x) today()) - market_date 
-                , today() - reactivation_date
-                )
-          mean(x)
-        } 
-      , days_market_absent = { 
-          x <- ifelse(
-                is.na(termination_date)
-                , duration(0, "days")
-                , modify_if(reactivation_date, is.na, \(x) today()) - termination_date
-                )
-          mean(x)
-        } 
-      ) ~ drug_category
-  )
+if (rlang::is_empty(dir(pattern = "ndc_events[.][Rr]data$"))){ 
+  if (!"ndc_events" %in% ls()){ 
+    ndc_events <- define(
+      api_data
+      , ~ndc + fda_product_name + drug_category + fda_approval_date + 
+          market_date + termination_date + reactivation_date
+      , list(
+          days_to_market = mean(market_date - fda_approval_date)
+          , on_market_age = { 
+              x <- ifelse(
+                    is.na(reactivation_date)
+                    , modify_if(termination_date, is.na, \(x) today()) - market_date 
+                    , today() - reactivation_date
+                    )
+              mean(x)
+            } 
+          , days_market_absent = { 
+              x <- ifelse(
+                    is.na(termination_date)
+                    , duration(0, "days")
+                    , modify_if(reactivation_date, is.na, \(x) today()) - termination_date
+                    )
+              mean(x)
+            } 
+          ) ~ drug_category
+      )
+  }
+  
+} else {
+  dir(pattern = "ndc_events[.][Rr]data$") |> load()
+}
+
+```
+
+# Save Data
+
+```{r SAVE_DATA}
+  book.of.workflow::save_image("openFDA_ndc", file.name = "openFDA_ndc"
+                               , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
+  
+  book.of.workflow::save_image("api_data", "api_dictionary", file.name = "mdrp_api_data"
+                               , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
+  
+  book.of.workflow::save_image("ndc_events", file.name = "ndc_events"
+                               , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
 
 ```
