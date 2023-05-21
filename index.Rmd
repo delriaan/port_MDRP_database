@@ -72,11 +72,10 @@ tags$table(
   ) |> tags$p()
 ```
 
-## Data Summary <br><sup>Summarytools</sup> {.tabset .tabset-fade .tabset-pills}
+## Workflow <br><sup>Summarytools</sup> {.tabset .tabset-fade .tabset-pills}
 
 
 ```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE, warning=FALSE, message=FALSE}
-
 # MDRP database data
 if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
   if (!"api_data" %in% ls()){ 
@@ -94,7 +93,6 @@ if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
       modify_at(ls(., pattern = "Date"), lubridate::mdy) %>% 
       setnames(stri_replace_all_fixed(names(.) |> tolower(), ".", "_"))
   }
-  
   
   if (!"api_dictionary" %in% ls()){ 
     api_dictionary <- invisible(urls$data |> 
@@ -146,9 +144,10 @@ if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
       api_data <<- modify_at(api_data, y, \(i){ attr(i, "label") <- .label; i }) 
     })
   }
-  
 } else { 
-  dir(pattern = "mdrp_api_data") |> load() 
+  if (!"api_data" %in% ls()){ 
+    dir(pattern = "mdrp_api_data") |> load() 
+  }
 }
 
 # openFDA supplementary data
@@ -168,9 +167,10 @@ if (rlang::is_empty(dir(pattern = "openFDA_ndc[.][Rr]data$"))){
     })()
   }
 } else { 
-  dir(pattern = "openFDA_ndc") |> load() 
+  if (!"openFDA_ndc" %in% ls()){ 
+    dir(pattern = "openFDA_ndc") |> load() 
+  }
 }
-
 ```
 
 ```{r EXPLORATION, warning=FALSE, message=FALSE, fig.dim=c(600,960)}
@@ -211,7 +211,6 @@ check_ndc_format <- \(lc, pc){
           , \(i) stri_length(i) < 4
           , \(i) stri_pad_left(i, width = ifelse(stri_length(pc) == 3, 5, 4), pad = "0")
           )
-  
   paste(lc, pc, sep = "-")
 }
 ```
@@ -219,66 +218,85 @@ check_ndc_format <- \(lc, pc){
 This is done in order to join the data sets using a conformed NDC sequence.
 
 ```{r JOIN_DRUG_DATA, warning=FALSE, message=FALSE}
-master_drug_data <- (\(x, i) x[
-                  i, on = "alt_ndc==product_ndc"
-                  , nomatch = 0
-                  , allow.cartesian = TRUE
-                  , `:=`(pharm_class = pharm_class, dea_schedule = dea_schedule, product_type = product_type, route = route, marketing_category = marketing_category)
-                  , by = .EACHI
-                  ])(api_data[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
-                    , openFDA_ndc
-                    )
-
-master_drug_data %<>% modify_at("pharm_class", unlist)
-
+if (rlang::is_empty(dir(pattern = "master_drug_data[.][Rr]data$"))){
+  if (!"master_drug_data" %in% ls()){
+    master_drug_data <- (\(x, i) x[
+                    i, on = "alt_ndc==product_ndc"
+                    , nomatch = 0
+                    , allow.cartesian = TRUE
+                    , `:=`(pharm_class = pharm_class
+                           , dea_schedule = dea_schedule
+                           , product_type = product_type
+                           , route = route
+                           , marketing_category = marketing_category
+                           )
+                    , by = .EACHI
+                    ])(api_data[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
+                      , openFDA_ndc)
+  
+    master_drug_data[, `:=`(
+      pharm_class := map_chr(pharm_class, \(x) unlist(x) %||% "~")
+      , route := map_chr(route, \(x) unlist(x) %||% "~")
+      )]
+  }
+} else {
+  if (!"master_drug_data" %in% ls()){ 
+    dir(pattern = "master_drug_data[.][Rr]data$") |> load()
+  }
+}
 ```
 
 
 ## Temporal<br>Analysis 
 
 ```{r TIME_STUDY, warning=FALSE, message=FALSE}
+if ("api_data" %in% ls()){ rm(api_data) }
 
 if (rlang::is_empty(dir(pattern = "ndc_events[.][Rr]data$"))){ 
   if (!"ndc_events" %in% ls()){ 
     ndc_events <- define(
-      api_data
-      , ~ndc + fda_product_name + drug_category + fda_approval_date + 
+      master_drug_data
+      , ~alt_ndc + fda_product_name + drug_category + 
+          pharm_class + dea_schedule + product_type + 
+          route + marketing_category + fda_approval_date + 
           market_date + termination_date + reactivation_date
-      , list(
-          days_to_market = mean(market_date - fda_approval_date)
-          , on_market_age = { 
-              x <- ifelse(
-                    is.na(reactivation_date)
-                    , modify_if(termination_date, is.na, \(x) today()) - market_date 
-                    , today() - reactivation_date
-                    )
-              mean(x)
-            } 
-          , days_market_absent = { 
-              x <- ifelse(
-                    is.na(termination_date)
-                    , duration(0, "days")
-                    , modify_if(reactivation_date, is.na, \(x) today()) - termination_date
-                    )
-              mean(x)
-            } 
-          ) ~ drug_category
-      )
+      , unique(.SD)
+      , days_to_market = duration(as.integer(market_date) - as.integer(fda_approval_date), units = "days")
+      , on_market_age = duration({ 
+            ifelse(is.na(termination_date), ifelse(is.na(reactivation_date), today(), reactivation_date), termination_date) - 
+            ifelse(is.na(reactivation_date), ifelse(is.na(termination_date), market_date, termination_date), reactivation_date)
+          }, units = "days")
+      , days_market_absent = duration({ 
+            ifelse(is.na(reactivation_date), today(), reactivation_date) - 
+            ifelse(is.na(termination_date), today(), termination_date)
+          }, units = "days")
+      );
+    
+    rlang::set_names(
+      c("Days between approval \nand market release"
+          , "Days active on market"
+          , "Days most-recently \nabsent from market")
+      , c("days_to_market", "on_market_age", "days_market_absent")
+      )|> 
+      iwalk(\(x, y) rlang::parse_expr(sprintf("setattr(ndc_events$%s, \"label\", \"%s\")", y, x)) |> eval(envir = .GlobalEnv))
   }
-  
 } else {
-  dir(pattern = "ndc_events[.][Rr]data$") |> load()
+  if (!"ndc_events" %in% ls()){ 
+    dir(pattern = "ndc_events[.][Rr]data$") |> load()
+  }
 }
-
 ```
 
-# Save Data
+## Save Data
 
 ```{r SAVE_DATA}
   book.of.workflow::save_image("openFDA_ndc", file.name = "openFDA_ndc"
                                , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
   
   book.of.workflow::save_image("api_data", "api_dictionary", file.name = "mdrp_api_data"
+                               , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
+  
+  book.of.workflow::save_image("master_drug_data", file.name = "master_drug_data"
                                , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
   
   book.of.workflow::save_image("ndc_events", file.name = "ndc_events"
