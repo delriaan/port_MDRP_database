@@ -3,13 +3,15 @@ title: "Medicaid Drug Rebate Program (MDRP) Database"
 output: 
   html_notebook:
     code_folding: hide
+params:
+  data: data
 ---
 
 ```{r setup, warning=FALSE, message=FALSE}
 options(future.globals.maxSize = 2 * 1024 * 10E6);
 
-.cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell"
-                , "SmartEDA", "htmltools", "slider", "stringi", "magrittr"
+.cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell", "cachem"
+                , "SmartEDA", "htmltools", "slider", "stringi", "magrittr", "plotly"
                 , "DT", "data.table", "pdftools", "lubridate", "future", "furrr", "future.callr")
 .git_libs <- paste0("book.of.", c("utilities", "features", "workflow")) |> c("architect")
               
@@ -42,6 +44,8 @@ urls <- list(
   , git_libs = map(.git_libs, \(x) tags$li(tags$a(title = paste0("delriaan/", x), x))) |> list() |> tags$ul()
   , openFDA = "https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip"
   )
+
+.cache <- cache_disk(dir = "r_session_cache")
 ```
 
 #  {.tabset .tabset-fade .tabset-pills}
@@ -72,12 +76,13 @@ tags$table(
   ) |> tags$p()
 ```
 
-## Workflow <br><sup>Summarytools</sup> {.tabset .tabset-fade .tabset-pills}
+## Data <br>Wrangling 
 
+### Retrieve Data
 
 ```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE, warning=FALSE, message=FALSE}
 # MDRP database data
-if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data, pattern = "api_data[.][Rr]data$"))){
   if (!"api_data" %in% ls()){ 
     api_data <- urls$data |> 
       as.character() |> 
@@ -146,16 +151,18 @@ if (rlang::is_empty(dir(pattern = "mdrp_api_data[.][Rr]data$"))){
   }
 } else { 
   if (!"api_data" %in% ls()){ 
-    dir(pattern = "mdrp_api_data") |> load() 
+    dir(params$data, pattern = "api_data[.][Rr]data$", full.names = TRUE) |> load() 
   }
 }
 
 # openFDA supplementary data
-if (rlang::is_empty(dir(pattern = "openFDA_ndc[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data, pattern = "openFDA_ndc[.][Rr]data$"))){
   if (!"openFDA_ndc" %in% ls()){ openFDA_ndc <- (\(x){ 
       json.file <- "drug-ndc-0001-of-0001.json";
     
       if (!json.file %in% dir()){ 
+        tags$p(sprintf("Retrieve data from '%s'", urls$openFDA)) |> print()
+        
         GET(urls$openFDA, write_disk(x, TRUE)) 
         unzip(zipfile = x)
       }
@@ -168,15 +175,22 @@ if (rlang::is_empty(dir(pattern = "openFDA_ndc[.][Rr]data$"))){
   }
 } else { 
   if (!"openFDA_ndc" %in% ls()){ 
-    dir(pattern = "openFDA_ndc") |> load() 
+    dir(params$data, pattern = "openFDA_ndc", full.names = TRUE) |> load() 
   }
 }
 ```
 
-```{r EXPLORATION, warning=FALSE, message=FALSE, fig.dim=c(600,960)}
+### Prepare Data
+
+NDC sequences come in a various formats, usually a `4-4-x`, `5-4-x`, or `5-3-x` sequence (each integer indicating string length).  Sometimes other formats arise, so normalizing all NDC sequences is a good idea, especially when there is a desire (or need) to join different data containing intersecting NDCs.
+
+The following shows the NDC sequences in the *OpenFDA* and *MDRP* data:
+
+```{r EXPLORATION, warning=FALSE, message=FALSE}
 api_data[runif(n= nrow(api_data)) <= 0.33, !"id"] |>
   dfSummary(labels.col = TRUE) |> 
-  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data");
+  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data") 
+
 
 list(
   `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
@@ -184,24 +198,36 @@ list(
       stri_split_fixed("-") |> 
       map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
       table() |>
-      ratio(type = "of.sum", decimals = 6)
+      # ratio(type = "of.sum", decimals = 6) |>
+      as.data.table()
   , `MDRP: NDC Formats` = api_data[, paste(stri_length(labeler_code), stri_length(product_code), sep = "-")] |>
       sort() |> 
       table() |>
-      ratio(type = "of.sum", decimals = 6)
+      # ratio(type = "of.sum", decimals = 6)|>
+      as.data.table()
   ) |> 
   imap(\(x, y){ 
-    tags$li(
-      tags$b(y)
-      , HTML(": <br>&nbsp;&nbsp; ")
-      , sprintf("[%s]: %.2f %%", names(x), 100 * x) |> paste(collapse = "<br>&nbsp;&nbsp; ") |> HTML()
+    plot_ly(  
+      data = x
+      , type = "pie"
+      , labels = ~sprintf("[%s]", V1)
+      , values = ~N
+      , hole = 0.6
+      , name = sprintf('NDC Format Frequency: %s', y)
+      , textinfo='label+percent'
+      , insidetextorientation='radial'
       )
-    }) |>
-  tags$ul() |>
+  }) |>
+  subplot() |>
+      plotly::layout(
+        xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
+        , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
+        ) |>
+  # tags$ul() |>
   tags$p()
 ```
 
-Create a function to check NDC formats and conform: 
+I'll create a function to check NDC formats and conform them in order to join the two data sets using a conformed NDC sequence:
 
 ```{r}
 check_ndc_format <- \(lc, pc){ 
@@ -215,10 +241,9 @@ check_ndc_format <- \(lc, pc){
 }
 ```
 
-This is done in order to join the data sets using a conformed NDC sequence.
 
 ```{r JOIN_DRUG_DATA, warning=FALSE, message=FALSE}
-if (rlang::is_empty(dir(pattern = "master_drug_data[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data, pattern = "master_drug_data[.][Rr]data$"))){
   if (!"master_drug_data" %in% ls()){
     master_drug_data <- (\(x, i) x[
                     i, on = "alt_ndc==product_ndc"
@@ -241,7 +266,7 @@ if (rlang::is_empty(dir(pattern = "master_drug_data[.][Rr]data$"))){
   }
 } else {
   if (!"master_drug_data" %in% ls()){ 
-    dir(pattern = "master_drug_data[.][Rr]data$") |> load()
+    dir(params$data, pattern = "master_drug_data[.][Rr]data$", full.names = TRUE) |> load()
   }
 }
 ```
@@ -249,9 +274,9 @@ if (rlang::is_empty(dir(pattern = "master_drug_data[.][Rr]data$"))){
 
 ## Temporal<br>Analysis 
 
-```{r TIME_STUDY, warning=FALSE, message=FALSE}
-if ("api_data" %in% ls()){ rm(api_data) }
+`master_drug_data` is a great dataset for constructing simple, time-based metrics.  Given the natural order of the types of events, it is easy to setup  event sequence metrics using package [`lubridate`](https://rdocumentation.org/packages/lubridate/versions/1.9.2)
 
+```{r TIME_STUDY, warning=FALSE, message=FALSE}
 if (rlang::is_empty(dir(pattern = "ndc_events[.][Rr]data$"))){ 
   if (!"ndc_events" %in% ls()){ 
     ndc_events <- define(
@@ -282,12 +307,11 @@ if (rlang::is_empty(dir(pattern = "ndc_events[.][Rr]data$"))){
   }
 } else {
   if (!"ndc_events" %in% ls()){ 
-    dir(pattern = "ndc_events[.][Rr]data$") |> load()
+    dir(pattern = "ndc_events[.][Rr]data$", full.names = TRUE) |> load()
   }
 }
 ```
 
-## Save Data
 
 ```{r SAVE_DATA}
   book.of.workflow::save_image("openFDA_ndc", file.name = "openFDA_ndc"
