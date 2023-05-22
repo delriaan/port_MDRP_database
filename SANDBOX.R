@@ -96,3 +96,10 @@ api_data[1:1000, map2_chr(labeler_code, product_code, check_ndc_format)]
 
 # Drug Events ----
 ndc_events[!is.na(reactivation_date)] |> View()
+
+(\(x, i, by){
+  i <- define(x[i, on = by, allow.cartesian = TRUE]) 
+  imap(.ndc_events_meta, \(x, y){
+    rlang::inject(descr(x = modify_at(i, y, \(j) as.numeric(j, units = "days")), var = !!rlang::sym(y), transpose = TRUE)) |> view(method = "render")
+  })
+})(master_drug_data, ndc_events, c("alt_ndc", "fda_application_number"))

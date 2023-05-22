@@ -4,73 +4,47 @@ output:
   html_notebook:
     code_folding: hide
 params:
-  data: data
+  data_dir: data
+  cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr')
+  git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect')
 ---
 
-```{r setup, warning=FALSE, message=FALSE}
-options(future.globals.maxSize = 2 * 1024 * 10E6);
-
-.cran_libs <- c("purrr", "jsonlite", "httr", "summarytools", "munsell", "cachem"
-                , "SmartEDA", "htmltools", "slider", "stringi", "magrittr", "plotly"
-                , "DT", "data.table", "pdftools", "lubridate", "future", "furrr", "future.callr")
-.git_libs <- paste0("book.of.", c("utilities", "features", "workflow")) |> c("architect")
-              
-if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
-  if (!"remotes" %in% dir(sprintf("%s/library", R.home()))){ 
-    htmltools::tags$span(style = "text-deoration:italic; color:#333333; ", "... installing missing package 'remotes'")
-    install.packages("remotes", repos = "https://cloud.r-project.org") 
-  }
-  
-  htmltools::tags$span(
-    style = "text-deoration:italic; color:#333333; "
-    , "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow', 'architect'"
-    );
-  
-  remotes::install_github("delriaan/book.of.utilities", subdir = "pkg")
-  remotes::install_github("delriaan/book.of.features", subdir = "pkg")
-  remotes::install_github("delriaan/book.of.workflow", subdir = "pkg")
-  remotes::install_github("delriaan/architect", subdir = "pkg")
-}
-
-library(book.of.workflow)
-load_unloaded(!!!.cran_libs, autoinstall = TRUE)
-load_unloaded(!!!.git_libs)
-
-urls <- list(
-  data = list(
-    `Data Dictionary` = "https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf"
-    , Data = "https://download.medicaid.gov/data/drugproducts1q_2023.csv"
-    ) |> imap(\(x, y) tags$li(tags$a(href = x, y))) |> tags$ol()
-  , git_libs = map(.git_libs, \(x) tags$li(tags$a(title = paste0("delriaan/", x), x))) |> list() |> tags$ul()
-  , openFDA = "https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip"
-  )
-
-.cache <- cache_disk(dir = "r_session_cache")
+```{r setup ,echo=FALSE, warning=FALSE, message=FALSE}
+source("setup.R", local = TRUE)
 ```
 
 #  {.tabset .tabset-fade .tabset-pills}
 
-## Purpose &<br> Metadata 
+## Purpose &<br> Project Metadata 
 
-This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (dataset description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
+This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
 
-`r urls$data`
+```{r URLs, echo=FALSE}
+urls$data
+```
 
 ### Required LIbraries
 
 ```{r, echo=FALSE, cache=TRUE, cache.lazy=TRUE}
 tags$table(
-  style = "width:475px; "
+  style = "width:600px; "
   , tags$tr(
-    tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; ", "CRAN", colspan = 2, width="65%")
-    , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; ", width = "*", "GitHub")
-    )
+      tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; ", "CRAN", colspan = 3, width="65%")
+      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; ", width = "*", "GitHub")
+      )
   , tags$tr(
       style = "align:top"
-      , tags$td(style = "text-align:middle; background-color:#AAAAAA; "
-                , map(.cran_libs[1:5], \(x) tags$li(x)) |> list() |> tags$ul())
-      , tags$td(style = "text-align:middle; background-color:#AAAAAA; "
-                , map(.cran_libs[6:length(.cran_libs)], \(x) tags$li(x)) |> list() |> tags$ul())
+      , slider::slide(
+          params$cran_libs
+          , .after = 5
+          , .step = 6
+          , .f = \(x){ 
+              sprintf("<li>%s</li>", x) |> HTML() |> 
+                tags$ul() |> 
+                tags$td(style = "text-align:middle; background-color:#AAAAAA; ")
+              }
+          , .complete = TRUE) |> 
+          purrr::compact()
       , tags$td(style = "background-color:#EEEEEE; padding-right:20px; ", urls$git_libs)
       )
   ) |> tags$p()
@@ -78,17 +52,18 @@ tags$table(
 
 ## Data <br>Wrangling 
 
-### Retrieve Data
+### Retrieve and Prepare Data {.tabset}
+
+The data were retrieved via R package [httr](https://httr.r-lib.org) with some initial conversion to [data.table](https://rdatatable.gitlab.io/data.table/) objects.  
 
 ```{r RETRIEVE_DATA, cache=TRUE,cache.lazy=TRUE, warning=FALSE, message=FALSE}
 # MDRP database data
-if (rlang::is_empty(dir(params$data, pattern = "api_data[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data_dir, pattern = "api_data[.][Rr]data$"))){
   if (!"api_data" %in% ls()){ 
     api_data <- urls$data |> 
       as.character() |> 
       stri_extract_all_regex("http.+csv", simplify = TRUE) |> 
-      as.vector() %T>% 
-      (\(x) tags$p(sprintf("Retrieve data from '%s'", x)) |> print())() |>
+      as.vector() |>
       GET() |>
       content() |>
       rawToChar() |>
@@ -151,12 +126,12 @@ if (rlang::is_empty(dir(params$data, pattern = "api_data[.][Rr]data$"))){
   }
 } else { 
   if (!"api_data" %in% ls()){ 
-    dir(params$data, pattern = "api_data[.][Rr]data$", full.names = TRUE) |> load() 
+    dir(params$data_dir, pattern = "api_data[.][Rr]data$", full.names = TRUE) |> load() 
   }
 }
 
 # openFDA supplementary data
-if (rlang::is_empty(dir(params$data, pattern = "openFDA_ndc[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data_dir, pattern = "openFDA_ndc[.][Rr]data$"))){
   if (!"openFDA_ndc" %in% ls()){ openFDA_ndc <- (\(x){ 
       json.file <- "drug-ndc-0001-of-0001.json";
     
@@ -175,59 +150,66 @@ if (rlang::is_empty(dir(params$data, pattern = "openFDA_ndc[.][Rr]data$"))){
   }
 } else { 
   if (!"openFDA_ndc" %in% ls()){ 
-    dir(params$data, pattern = "openFDA_ndc", full.names = TRUE) |> load() 
+    dir(params$data_dir, pattern = "openFDA_ndc", full.names = TRUE) |> load() 
   }
 }
 ```
 
-### Prepare Data
-
 NDC sequences come in a various formats, usually a `4-4-x`, `5-4-x`, or `5-3-x` sequence (each integer indicating string length).  Sometimes other formats arise, so normalizing all NDC sequences is a good idea, especially when there is a desire (or need) to join different data containing intersecting NDCs.
 
-The following shows the NDC sequences in the *OpenFDA* and *MDRP* data:
+#### NDC Format Inspection
 
-```{r EXPLORATION, warning=FALSE, message=FALSE}
-api_data[runif(n= nrow(api_data)) <= 0.33, !"id"] |>
-  dfSummary(labels.col = TRUE) |> 
-  view(method = "render", report.title = "Medicaid Drug Rebate Program (MDRP) Data") 
+The following shows proportional representation of NDC formats in the *OpenFDA* and *MDRP* data, respectively:
 
-
+```{r NDC_FORMATS, echo=FALSE, warning=FALSE, message=FALSE}
 list(
   `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
       sort() |> 
       stri_split_fixed("-") |> 
       map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
-      table() |>
-      # ratio(type = "of.sum", decimals = 6) |>
-      as.data.table()
+      freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")))) 
   , `MDRP: NDC Formats` = api_data[, paste(stri_length(labeler_code), stri_length(product_code), sep = "-")] |>
-      sort() |> 
-      table() |>
-      # ratio(type = "of.sum", decimals = 6)|>
-      as.data.table()
+        freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))) |>
+        define(
+          NDC.Format = ifelse(ratio(N, type = "pareto", decimals = 6) < 0.1, "Other<br><sup>%s formats</sup>", NDC.Format) %>%
+            modify_at(
+              .at = which(grepl("Other", .))
+              , .f = \(x) sprintf(x, sum(grepl("Other", .)))
+              )
+          , N = sum(N) ~ NDC.Format
+          ) 
   ) |> 
-  imap(\(x, y){ 
+  imap(\(x, y){
     plot_ly(  
       data = x
       , type = "pie"
-      , labels = ~sprintf("[%s]", V1)
+      , labels = ~NDC.Format
       , values = ~N
       , hole = 0.6
-      , name = sprintf('NDC Format Frequency: %s', y)
+      , width = 500
+      , height = 450
+      , rotation = ifelse(grepl("MDRP", y), 33, 0)
+      , name = NULL
       , textinfo='label+percent'
       , insidetextorientation='radial'
-      )
-  }) |>
-  subplot() |>
+      ) |>
+      add_text(x = 0.5, y = 0.5
+               , xref = "paper", yref = "paper"
+               , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
+               , font = list(family = "Georgia", size = 22)) |>
       plotly::layout(
         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
         , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
         ) |>
-  # tags$ul() |>
-  tags$p()
+      plotly::config(displayModeBar= FALSE) |>
+      tags$td()
+  }) |>
+  tags$tr() |>
+  tags$table()
 ```
 
-I'll create a function to check NDC formats and conform them in order to join the two data sets using a conformed NDC sequence:
+The MDRP has many more NDC sequences due to truncation of leading zeroes.  Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen.  Knowing this, A function (`check_ndc_format()`) was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
+
 
 ```{r}
 check_ndc_format <- \(lc, pc){ 
@@ -241,79 +223,135 @@ check_ndc_format <- \(lc, pc){
 }
 ```
 
+#### Joined Data
+
+The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create  `master_drug_data` (sampled below): 
 
 ```{r JOIN_DRUG_DATA, warning=FALSE, message=FALSE}
-if (rlang::is_empty(dir(params$data, pattern = "master_drug_data[.][Rr]data$"))){
+if (rlang::is_empty(dir(params$data_dir, pattern = "master_drug_data[.][Rr]data$"))){
   if (!"master_drug_data" %in% ls()){
-    master_drug_data <- (\(x, i) x[
-                    i, on = "alt_ndc==product_ndc"
-                    , nomatch = 0
-                    , allow.cartesian = TRUE
-                    , `:=`(pharm_class = pharm_class
-                           , dea_schedule = dea_schedule
-                           , product_type = product_type
-                           , route = route
-                           , marketing_category = marketing_category
-                           )
-                    , by = .EACHI
-                    ])(api_data[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
-                      , openFDA_ndc)
-  
-    master_drug_data[, `:=`(
+    master_drug_data <- (\(x, i){
+      x[i, on = "alt_ndc==product_ndc"
+        , nomatch = 0
+        , allow.cartesian = TRUE
+        , `:=`(pharm_class = pharm_class
+               , dea_schedule = dea_schedule
+               , product_type = product_type
+               , route = route
+               , marketing_category = marketing_category
+               )
+        , by = .EACHI
+        ]
+      })(api_data[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)], openFDA_ndc)[, `:=`(
       pharm_class := map_chr(pharm_class, \(x) unlist(x) %||% "~")
       , route := map_chr(route, \(x) unlist(x) %||% "~")
       )]
   }
 } else {
   if (!"master_drug_data" %in% ls()){ 
-    dir(params$data, pattern = "master_drug_data[.][Rr]data$", full.names = TRUE) |> load()
+    dir(params$data_dir, pattern = "master_drug_data[.][Rr]data$", full.names = TRUE) |> load()
   }
 }
 ```
 
+```{r MASTER_DRUG_DATA_SAMPLE, echo=FALSE, warning=FALSE, message=FALSE}
+define(
+  master_drug_data
+  , .SD[!duplicated(ndc)][sample(.N, min(c(.N, 3))), ndc:marketing_category] ~ route + pharm_class
+  , filter(unique(.SD), pharm_class %in% sample(unique(pharm_class), 20))
+  ) |>
+  setorder(route, pharm_class, alt_ndc) %>%
+  setcolorder(c("ndc", "alt_ndc", "fda_product_name", keep(names(.), \(x) grepl("date", x)))) %>%
+  setnames(stri_split_fixed(names(.), "_", simplify = FALSE) |> map_chr(\(x) paste(x, collapse = "<br>"))) %>% 
+  DT::datatable(
+    escape = FALSE
+    , caption = HTML("<h3 style = 'font-family:Georgia'>Sample of <code>master_drug_data</code></h3>")
+    , rownames = FALSE
+    , extensions = c("Responsive", "Scroller", "RowGroup")
+    , options = list(
+        dom = "<ti>"
+        , deferRender = TRUE
+        , scroller = TRUE
+        , scrollY = 600
+        , rowGroup = list(dataSrc = which(grepl("route|(pharm.+class)", names(.))) - 1)
+        )
+  )
+```
+
+`r if ("api_data" %in% ls()){ rm(api_data) }`
 
 ## Temporal<br>Analysis 
 
-`master_drug_data` is a great dataset for constructing simple, time-based metrics.  Given the natural order of the types of events, it is easy to setup  event sequence metrics using package [`lubridate`](https://rdocumentation.org/packages/lubridate/versions/1.9.2)
+`master_drug_data` is a great dataset for constructing simple, time-based metrics.  Given the natural order of the types of events, it is easy to setup  event sequence metrics using package [`lubridate`](https://rdocumentation.org/packages/lubridate/versions/1.9.2). The metrics created are described below:
 
-```{r TIME_STUDY, warning=FALSE, message=FALSE}
-if (rlang::is_empty(dir(pattern = "ndc_events[.][Rr]data$"))){ 
-  if (!"ndc_events" %in% ls()){ 
-    ndc_events <- define(
-      master_drug_data
-      , ~alt_ndc + fda_product_name + drug_category + 
-          pharm_class + dea_schedule + product_type + 
-          route + marketing_category + fda_approval_date + 
-          market_date + termination_date + reactivation_date
-      , unique(.SD)
-      , days_to_market = duration(as.integer(market_date) - as.integer(fda_approval_date), units = "days")
-      , on_market_age = duration({ 
-            ifelse(is.na(termination_date), ifelse(is.na(reactivation_date), today(), reactivation_date), termination_date) - 
-            ifelse(is.na(reactivation_date), ifelse(is.na(termination_date), market_date, termination_date), reactivation_date)
-          }, units = "days")
-      , days_market_absent = duration({ 
+```{r NDC_EVENTS_METRICS, echo=FALSE, warning=FALSE, message=FALSE}
+.ndc_events_meta <- rlang::set_names(
+    c("Days between approval \nand market release"
+        , "Days active on market"
+        , "Days most-recently \nabsent from market")
+    , c("days_to_market", "on_market_age", "days_market_absent")
+    );
+
+append(list(`Metric Name` = "Description"), .ndc_events_meta) |> 
+  imap(\(x, y) 
+    if (grepl("Metric", y)){ 
+      tags$tr(
+        tags$th(style = "background-color: #EEEEEE; padding:2px; ", y)
+        , tags$th(style = "background-color: #EEEEEE; padding-left: 5px; ", x)
+        )
+      } else { 
+      tags$tr(
+        tags$td(style = "font-weight:bold; padding:2px; text-align:right; ", y)
+        , tags$td(style = "padding-left: 5px; ", x)
+        )
+      }
+    ) |> 
+  tags$table() |>
+  tags$p()
+```
+
+```{r NDC_EVENTS, echo = FALSE, warning=FALSE, message=FALSE}
+if (rlang::is_empty(dir(params$data_dir, pattern = "ndc_events[.][Rr]data$"))){ 
+  if (!"ndc_events" %in% ls()){
+    ndc_events <- master_drug_data |>
+      define(
+        ~alt_ndc + fda_application_number + fda_approval_date + market_date + termination_date + reactivation_date
+        , days_to_market = market_date - fda_approval_date
+        , on_market_age = 
+            map2_dbl(ifelse(is.na(termination_date), today(), termination_date), reactivation_date, \(x, y) max(c(x, y), na.rm = TRUE)) -
+            map2_dbl(ifelse(is.na(termination_date), market_date, termination_date), reactivation_date, \(x, y) max(c(x, y), na.rm = TRUE)) 
+        , days_market_absent = 
             ifelse(is.na(reactivation_date), today(), reactivation_date) - 
             ifelse(is.na(termination_date), today(), termination_date)
-          }, units = "days")
-      );
-    
-    rlang::set_names(
-      c("Days between approval \nand market release"
-          , "Days active on market"
-          , "Days most-recently \nabsent from market")
-      , c("days_to_market", "on_market_age", "days_market_absent")
-      )|> 
-      iwalk(\(x, y) rlang::parse_expr(sprintf("setattr(ndc_events$%s, \"label\", \"%s\")", y, x)) |> eval(envir = .GlobalEnv))
+        , unique(.SD)
+        );
+
+  
+  iwalk(.ndc_events_meta, \(x, y) rlang::parse_expr(sprintf("setattr(ndc_events$%s, \"label\", \"%s\")", y, x)) |> eval(envir = .GlobalEnv))
   }
 } else {
   if (!"ndc_events" %in% ls()){ 
-    dir(pattern = "ndc_events[.][Rr]data$", full.names = TRUE) |> load()
+    dir(params$data_dir, pattern = "ndc_events[.][Rr]data$", full.names = TRUE) |> load()
   }
 }
 ```
 
+Let us briefly explore `ndc_events`:
 
-```{r SAVE_DATA}
+```{r}
+(\(x, i, by){
+  i <- define(x[i, on = by, allow.cartesian = TRUE]) 
+  imap(.ndc_events_meta, \(x, y){
+    rlang::inject(descr(x = modify_at(i, y, \(j) as.numeric(j, units = "days")), var = !!rlang::sym(y), transpose = !TRUE)) |> 
+      view(method = "render") |>
+      tags$td(style="width:300px; ")
+  })
+})(master_drug_data, ndc_events, c("alt_ndc", "fda_application_number")) |>
+  tags$tr() |>
+  tags$table()
+```
+
+```{r SAVE_DATA, echo=FALSE, include=FALSE, warning=FALSE, message=FALSE}
   book.of.workflow::save_image("openFDA_ndc", file.name = "openFDA_ndc"
                                , use.prefix = FALSE, use.timestamp = FALSE, safe = FALSE)
   
