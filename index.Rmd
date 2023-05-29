@@ -1,27 +1,33 @@
 ---
 title: "Medicaid Drug Rebate Program (MDRP) Database"
-output: 
+output:
   html_notebook:
-    code_folding: hide
     css: markdown.css
+    code_folding: hide
+  html_document:
+    css: markdown.css
+    code_folding: hide
+    df_print: paged
 params:
   data_dir: data
   cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr')
   git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect')
+  refresh: !r FALSE
 ---
 
-```{r setup, echo=FALSE, warning=FALSE, message=FALSE} 
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
-source("setup.R", local = TRUE)
+source("setup.R", local=TRUE)
 ```
 
+```{=html}
 <script type="text/javascript" async
   src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
 </script>
-
+```
 #  {.tabset .tabset-fade .tabset-pills}
 
-## Purpose &<br> Project Metadata 
+## Purpose &<br> Project Metadata
 
 This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
 
@@ -31,12 +37,15 @@ urls$data
 
 ### Required LIbraries
 
-```{r, echo=FALSE}
+```{r echo=FALSE}
 tags$table(
   style = "width:600px; "
   , tags$tr(
-      tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; ", "CRAN", colspan = 3, width="65%")
-      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; ", width = "*", "GitHub")
+      tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; "
+              , "CRAN", colspan = 3, width="65%")
+      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; "
+                , width = "*"
+                , HTML("GitHub (use <code>remotes::install_github('delriaan/{package}', subdir = 'pkg')</code> to install)"))
       )
   , tags$tr(
       style = "align:top"
@@ -56,16 +65,17 @@ tags$table(
   ) |> tags$p()
 ```
 
-## Data <br>Wrangling 
+## Data <br>Wrangling
 
 ### Retrieve and Prepare Data {.tabset}
 
-The data were retrieved via R package [httr](https://httr.r-lib.org) with some initial conversion to [data.table](https://rdatatable.gitlab.io/data.table/) objects.  
+The data were retrieved via R package [httr](https://httr.r-lib.org) with some initial conversion to [data.table](https://rdatatable.gitlab.io/data.table/) objects.  Core objects were cached to disk ([cachem](https://cachem.r-lib.org)) for easy retrieval after the initial pull.
 
-#### MDRP Data
+#### Data Sets
 
-```{r RETRIEVE_DATA_MDRP} 
-# MDRP database data
+**MDRP Data**
+
+```{r RETRIEVE_DATA_MDRP, collapse=FALSE} 
 if (!"api_data" %in% .cache$keys()){ 
   download_temp <- tempfile()
   
@@ -74,38 +84,32 @@ if (!"api_data" %in% .cache$keys()){
     as.vector() |>
     download.file(destfile = download_temp) 
     
-  .cache$set("api_data", { 
-    read.csv(download_temp) |>
-      as.data.table(na.rm = FALSE) 
-  })
+  .tmp_obj <- read.csv(download_temp) |> as.data.table(na.rm = FALSE) 
 }
 
 if (!"api_data" %in% ls()){ 
   makeActiveBinding("api_data", function(){ .cache$get("api_data") }, env = globalenv())
 }
 
-api_data |> dfSummary() |> view(method = "render")
 ```
 
-Some of the values in date fields are empty strings and were replaced with "01/01/1900".  Additional formatting updates include the following:
+Formatting updates include the following:
 
-- Convert field 'NDC' and fields ending in 'Code' to characters (numeral-encoded nominal values)
-- Converting date fields to date content
-- Replace '.' in field names with ' '
+-   Convert field 'NDC' and fields ending in 'Code' to characters (numeral-encoded nominal values)
+-   Converting date fields to date format
+-   Replace '.' in field names with ' '
 
-```{r}
-if (!"api_data" %in% .cache$keys()){ 
-  api_data %>%
+```{r echo=FALSE}
+if (!"api_data" %in% .cache$keys()){
+  suppressWarnings(.tmp_obj %>%
     modify_at(ls(., pattern = "(NDC|Code)$"), as.character) %>%
-    modify_at(ls(., pattern = "Date")
-            , \(x) modify_if(x, \(i) (i == "")|rlang::is_empty(i), \(i) "01/01/1900") |> lubridate::mdy()
-            ) %>%
-  setnames(stri_replace_all_fixed(names(.), ".", " ")) |>
-  (\(x) .cache$set(key = "api_data", value = x))()
+    modify_at(ls(., pattern = "Date"), lubridate::mdy) %>% 
+    setnames(stri_replace_all_fixed(names(.), ".", " ")) |>
+    (\(x) .cache$set(key = "api_data", value = x))())
 }
 ```
 
-#### Dictionary
+**Dictionary**
 
 ```{r RETRIEVE_DATA_DICTIONARY}
 if (!"api_dictionary" %in% .cache$keys()){ 
@@ -118,7 +122,7 @@ if (!"api_dictionary" %in% .cache$keys()){
     pdf_text()))
 }  
 
-.summary_labels <- {
+.summary_labels <- invisible({
   .pattern <- c("Pkg"
                 , "Intro"
                 , "COD Status"
@@ -153,7 +157,7 @@ if (!"api_dictionary" %in% .cache$keys()){
         ifelse(stringi::stri_length(.out) > 50, paste0(stri_sub(.out, length = 50), " ..."), .out)
       }
     })
-}
+})
 
 .tmp_obj <- api_data;
 
@@ -164,44 +168,42 @@ iwalk(.summary_labels, \(x, y){
 .cache$set("api_data", .tmp_obj)
 ```
 
-#### OpenFDA Data
+**OpenFDA Data**
 
-```{r RETRIEVE_DATA_OPENFDA} 
-suppressWarnings({ 
-  # openFDA supplementary data
-  if (!"open_fda_ndc" %in% .cache$keys()){
-    json.file <- paste0(params$data_dir, "/drug-ndc-0001-of-0001.json");
-    download.file <- tempfile();
+```{r RETRIEVE_DATA_OPENFDA, warning=FALSE}
+if (!"open_fda_ndc" %in% .cache$keys()){
+  json.file <- paste0(params$data_dir, "/drug-ndc-0001-of-0001.json");
+  download.file <- tempfile();
+  
+  if (!file.exists(json.file)){ 
+    tags$p(sprintf("Retrieve data from '%s'", urls$openFDA)) |> print()
     
-    if (!file.exists(json.file)){ 
-      tags$p(sprintf("Retrieve data from '%s'", urls$openFDA)) |> print()
-      
-      GET(urls$data$children |> stri_extract_first_regex("https.+json.zip"),
-        write_disk(download.file, overwrite = TRUE));
-      
-      unzip(zipfile = download.file)
-    }
-        
-    .cache$set("open_fda_ndc", { read_json(path = json.file) %$% {
-      map(results, as.data.table) |> rbindlist(fill = TRUE) |>  
-        setattr("metadata", meta)}
-      })
+    GET(urls$data$children |> stri_extract_first_regex("https.+json.zip"),
+      write_disk(path = download.file, overwrite = TRUE));
+    
+    unzip(zipfile = download.file, exdir = "data")
   }
-  if (!"openFDA_ndc" %in% ls()){ 
+      
+  .cache$set("open_fda_ndc", { read_json(path = json.file) %$% {
+    map(results, as.data.table) |> rbindlist(fill = TRUE) |>  
+      setattr("metadata", meta)}
+    })
+}
+
+if (!"openFDA_ndc" %in% ls()){ 
     makeActiveBinding("openFDA_ndc", function(){ .cache$get("open_fda_ndc")}, env = environment())
   }
-})
+
 ```
 
-#### NDC Format Inspection
+#### NDC Format Inspection {.tabset}
 
-NDC sequences come in a various formats, usually a `4-4-x`, `5-4-x`, or `5-3-x` sequence (each integer indicating string length).  Sometimes other formats arise, so normalizing all NDC sequences is a good idea, especially when there is a desire (or need) to join different data containing intersecting NDCs.
-
+NDC sequences come in a various formats, usually a `4-4-x`, `5-4-x`, or `5-3-x` sequence (each integer indicating string length). Sometimes other formats arise, so normalizing all NDC sequences is a good idea, especially when there is a desire (or need) to join different data containing intersecting NDCs.
 
 The following shows proportional representation of NDC formats in the *OpenFDA* and *MDRP* data, respectively:
 
-```{r NDC_FORMATS, echo=FALSE} 
-suppressWarnings({ list(
+```{r NDC_FORMATS, echo=FALSE, warning=FALSE, message=FALSE}
+list(
   `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
       sort() |> 
       stri_split_fixed("-") |> 
@@ -220,60 +222,44 @@ suppressWarnings({ list(
           , N = sum(N) ~ NDC.Format
           )
   ) |> 
-  imap(\(x, y){
-    plot_ly(  
-      data = x
-      , type = "pie"
-      , labels = ~NDC.Format
-      , values = ~N
-      , hole = 0.6
-      , width = 500
-      , height = 450
-      , rotation = ifelse(grepl("MDRP", y), 33, 0)
-      , name = NULL
-      , textinfo='label+percent'
-      , insidetextorientation='radial'
+imap(\(x, y){
+  plot_ly(  
+    data = x
+    , type = "pie"
+    , labels = ~NDC.Format
+    , values = ~N
+    , hole = 0.6
+    , width = 500
+    , height = 450
+    , rotation = ifelse(grepl("MDRP", y), 33, 0)
+    , name = NULL
+    , textinfo='label+percent'
+    , insidetextorientation='radial'
+    ) |>
+    add_text(x = 0.5, y = 0.5
+             , xref = "paper", yref = "paper"
+             , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
+             , font = list(family = "Georgia", size = 22)) |>
+    plotly::layout(
+      xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
+      , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
       ) |>
-      add_text(x = 0.5, y = 0.5
-               , xref = "paper", yref = "paper"
-               , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
-               , font = list(family = "Georgia", size = 22)) |>
-      plotly::layout(
-        xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
-        , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
-        ) |>
-      plotly::config(displayModeBar= FALSE) |>
-      tags$td()
-  }) |>
-  tags$tr() |>
-  tags$table()
-});
+    plotly::config(displayModeBar= FALSE) |>
+    tags$td()
+}) |>
+tags$tr() |>
+tags$table()
 ```
 
-The MDRP has many more NDC sequences due to truncation of leading zeroes.  Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen.  Knowing this, A function (`check_ndc_format()`) was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
+The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, A function (`check_ndc_format()` &mdash; see `r tags$a(href = ".\\setup.R", target="_blank", "setup.R")` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
 
 
-```{r, CHECK_NDC_FORMAT_DEF} 
-check_ndc_format <- \(lc, pc){ 
-  pc <- modify_if(
-          pc, \(i) stri_length(i) < 3
-          , \(i) stri_pad_left(i, width = 3, pad = "0")
-          )
-  lc <- modify_if(
-          lc
-          , \(i) stri_length(i) < 4
-          , \(i) stri_pad_left(i, width = ifelse(stri_length(pc) == 3, 5, 4), pad = "0")
-          )
-  paste(lc, pc, sep = "-")
-}
-```
+## Master Drug<br>Data {.tabset .tabet-fade}
 
-#### Joined Data
+The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create `master_drug_data` sampled below (**Note**: due to the size of the data, the join operation takes some time which is why the result is disk-cached for later retrieval. This caching approach is used for data retrieved or created during the data wrangling phase.):
 
-The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create `master_drug_data` sampled below (**Note**: due to the size of the data, the join operation takes some time which is why the result is disk-cached for later retrieval.  This caching approach is used for data retrieved or created during the data wrangling phase.): 
-
-```{r JOIN_DRUG_DATA} 
-if (!"master_drug_data" %in% .cache$keys()){
+```{r MASTER_DRUG_DATA}
+if (params$refresh || !"master_drug_data" %in% .cache$keys()){
   .cache$set("master_drug_data", (\(x, i){
     x[i
       , on = "alt_ndc==product_ndc"
@@ -292,46 +278,22 @@ if (!"master_drug_data" %in% .cache$keys()){
         )
       ]
     })(
-      api_data %>% 
-        setnames(stri_replace_all_fixed(names(.) |> tolower(), " ", "_")) %>% 
-        .[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
-      , openFDA_ndc
-      ))
+    api_data %>% 
+      setnames(stri_replace_all_fixed(names(.) |> tolower(), " ", "_")) %>% 
+      .[, alt_ndc := map2_chr(labeler_code, product_code, check_ndc_format)]
+    , openFDA_ndc
+    ))
 }
 if (!"master_drug_data" %in% ls()){ 
   makeActiveBinding("master_drug_data", function(){ .cache$get("master_drug_data") }, env = globalenv());
 }
 ```
 
-```{r MASTER_DRUG_DATA_SAMPLE, echo=FALSE} 
-define(
-  master_drug_data
-  , .SD[!duplicated(ndc)][sample(.N, min(c(.N, 3))), ndc:marketing_category] ~ route + pharm_class
-  , filter(unique(.SD), pharm_class %in% sample(unique(pharm_class), 20))
-  ) |>
-  setorder(route, pharm_class, alt_ndc) %>%
-  setcolorder(c("ndc", "alt_ndc", "fda_product_name", keep(names(.), \(x) grepl("date", x)))) %>%
-  setnames(stri_split_fixed(names(.), "_", simplify = FALSE) |> map_chr(\(x) paste(x, collapse = "<br>"))) %>% 
-  DT::datatable(
-    escape = FALSE
-    , caption = HTML("<h3 style = 'font-family:Georgia'>Sample of <code>master_drug_data</code></h3>")
-    , rownames = FALSE
-    , extensions = c("Responsive", "Scroller", "RowGroup")
-    , options = list(
-        dom = "<ti>"
-        , deferRender = TRUE
-        , scroller = TRUE
-        , scrollY = 600
-        , rowGroup = list(dataSrc = which(grepl("route|(pharm.+class)", names(.))) - 1)
-        )
-  )
-```
+### Event Metrics
 
-## Temporal<br>Analysis {.tabset .tabet-fade}
+`master_drug_data` is a great data set for constructing simple, time-based metrics. Given the natural order of the types of events, it is easy to setup event sequence metrics using package [`lubridate`](https://rdocumentation.org/packages/lubridate/versions/1.9.2). The metrics to be created are described below:
 
-`master_drug_data` is a great data set for constructing simple, time-based metrics.  Given the natural order of the types of events, it is easy to setup  event sequence metrics using package [`lubridate`](https://rdocumentation.org/packages/lubridate/versions/1.9.2). The metrics created are described below:
-
-```{r NDC_EVENTS_METRICS_META, echo=FALSE} 
+```{r NDC_EVENTS_METRICS_META, echo=FALSE}
 .ndc_events_meta <- rlang::set_names(
     c("Days between approval \nand market release"
         , "Days active on market"
@@ -357,25 +319,20 @@ append(list(`Metric Name` = "Description"), .ndc_events_meta) |>
   tags$p()
 ```
 
-```{r NDC_EVENTS, echo = FALSE} 
-if (!"ndc_events" %in% .cache$keys()){ 
+### Drug Events<br>Creation
+
+```{r DRUG_EVENTS_PREP, echo=FALSE}
+if (params$refresh || !"ndc_events" %in% .cache$keys()){ 
   .tmp_obj <- define(
         master_drug_data
         , ~alt_ndc + fda_application_number + fda_approval_date + 
             market_date + termination_date + reactivation_date
-        , days_to_market = market_date - fda_approval_date
-        , on_market_age = 
-            map2_dbl(ifelse(is.na(termination_date), today(), termination_date)
-                     , reactivation_date, \(x, y) max(c(x, y), na.rm = TRUE)) -
-            map2_dbl(ifelse(is.na(termination_date), market_date, termination_date)
-                     , reactivation_date, \(x, y) max(c(x, y), na.rm = TRUE)) 
-        , days_market_absent = 
-            ifelse(is.na(reactivation_date), today(), reactivation_date) - 
-            ifelse(is.na(termination_date), today(), termination_date)
         , unique(.SD)
         );
   
-  iwalk(.ndc_events_meta, \(x, y){ .tmp_obj <<- modify_at(.tmp_obj, y, \(i){ setattr(i, "label", x) }) })
+  iwalk(.ndc_events_meta, \(x, y){ 
+    .tmp_obj <<- modify_at(.tmp_obj, y, \(i){ setattr(i, "label", x) }) 
+  })
 
   .cache$set("ndc_events", .tmp_obj)
 }
@@ -385,280 +342,204 @@ if (!"ndc_events" %in% ls()){
 }
 ```
 
-<hr>
+My next task was to add the date-differential metrics mentioned in the previous subsection.  As an intermediate object, I created `ndc_events` by looking at what appears to the be natural chronology of dates: `fda_approval_date` -> `market_date` -> `termination_date` -> `reactivation_date`.  
 
-Let us briefly explore `ndc_events` using `descr()` from the [summarytools](https://www.rdocumentation.org/packages/summarytools) package and `group.CI()` from [Rmisc](https://www.rdocumentation.org/packages/Rmisc):
+Some of the values in columns `termination_date` and `reactivation_date` are `NA` indicating the event did not happen. This would obviously need to be addressed in deriving the metrics logic, and after several rounds of trial-and-error, I worked out such logic, discovering the following in the process:
 
-### Take I 
+- The metrics are hierarchically-contingent based on whether or not `NA` values exist and if so, which of `termination_date`, `reactivation_date`, or both
+- Some values in `termination_date` and `reactivation_date` are future-dated relative to "today": these were converted to `NA` before deriving the metrics as they haven't happened yet (`NA` $\equiv$ Didn't happen (_yet_))
+- A small subset of observations having the FDA approval date **after** the listed market date
 
-```{r TAKE_I_VIZ} 
+The resulting object was captured in `ndc_events_clean`:
+
+```{r DRUG_EVENTS_MAKE}
+ndc_events_clean <- { 
+  define(
+    ndc_events
+    , modify_at(.SD, c("termination_date", "reactivation_date"), \(x) ifelse(today() < x, NA, x))
+    , cbind(
+        .SD
+        , define({
+            .SD[, fda_approval_date:reactivation_date][, map(.SD, as.numeric)] |> 
+              # dplyr::slice_sample(prop = 0.4) |>
+              apply(1, \(x){
+                c(x, diff(x) |> modify_if(is.na, \(i) 0) |> sign() %>% .[-1]) |> 
+                  as.list() |>
+                  modify_at(c(5, 6), \(i) i == 1) %>% 
+                  rlang::set_names(names(.)[c(1:4)], paste0(names(.)[c(5, 6)], ".bool"))
+                }, simplify = FALSE) |>
+              rbindlist()
+            }
+          , days_to_market = market_date - fda_approval_date
+          , on_market_age = 
+              apply(.SD[, .(termination_date.bool, reactivation_date.bool, termination_date)]
+                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], today(), i[[3]]), today()) }) -
+              apply(.SD[, .(termination_date.bool, reactivation_date.bool, market_date, reactivation_date)]
+                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], i[[4]], i[[3]]), i[[3]]) })
+          , days_market_absent = 
+              apply(.SD[, .(reactivation_date.bool, reactivation_date)]
+                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) }) -
+                apply(.SD[, .(termination_date.bool, termination_date)]
+                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) })
+          , ~days_to_market + on_market_age + days_market_absent
+          )
+      )
+    , modify_at(.SD, c("termination_date", "reactivation_date"), \(x) as.Date(x, origin = "1970-01-01"))
+  )}
+
 (\(x, i, by){
-  i <- define(x[i, on = by, allow.cartesian = TRUE])
-  
+  i <- define(x[i, on = by, allow.cartesian = TRUE]) ;
   imap(.ndc_events_meta, \(x, y){
     rlang::inject(descr(x = modify_at(i, y, \(j) as.numeric(j, units = "days")), var = !!rlang::sym(y), transpose = !TRUE)) |> 
-      view(method = "render", table.classes = 'multi_stat'
-           , custom.css = "markdown.css", report.title = " ") |> 
-      tagList() |>
+      view(method = "render", table.classes = 'multi_stat', custom.css = "markdown.css") |>
       tags$td()
   })
-})(master_drug_data, ndc_events, c("alt_ndc", "fda_application_number")) |>
-  tags$tr() |>
-  tags$table()
+})(master_drug_data, ndc_events_clean, c("alt_ndc", "fda_application_number", "market_date", "termination_date", "reactivation_date", "fda_approval_date")) |>
+tags$tr() |>
+tags$table()
 ```
 
-### Take II 
+Some of the 'Max'/'Min' values are negative; however, the number of records is relatively small and, more importantly, explainable:
 
-As there should not be negative values, I reviewed the data and discovered that some values for each of the date columns were future-dated relative to "today": these dates were replaced with "today".  In additional, there were a small subset of observations having the FDA approval date **after** the listed market date: these were excluded.  The resulting object is captured in `ndc_events_clean` as an intermediate object: 
+- `days_to_market`: Approval occurred after the market date
+- `days_market_absent`: Records where the termination date was non-`NA` but after the market date
+
+### Drug Events<br>Visualization
+
+Combining the master drug data and event data (`master_drug_data` + `ndc_events_clean`), after some trial-and-error, I settled on the following showing the root-mean-square of metric values grouped by drug route:
 
 
-```{r TAKE_II_VIZ} 
-ndc_events_clean <- define(
-  ndc_events[(fda_approval_date <= market_date)]
-  , days_to_market = market_date - fda_approval_date
-  , on_market_age = 
-      map2_dbl(
-        termination_date
-        , reactivation_date
-        , \(x, y) ifelse(max(c(x, y)) == as.Date("1900-01-01"), today(), max(c(x, y)))
-        ) - 
-      map2_dbl(
-        termination_date
-        , market_date
-        , \(x, y) max(c(x, y))
-        )
-  , days_market_absent = 
-      ifelse(reactivation_date == as.Date("1900-01-01"), today(), reactivation_date) - 
-      map2_dbl(
-        termination_date
-        , reactivation_date
-        , \(x, y) ifelse(max(c(x, y)) == as.Date("1900-01-01"), today(), max(c(x, y)))
-        )
-  )
-
-(\(x, i, by){
-    i <- define(x[i, on = by, allow.cartesian = TRUE]) ;
-    imap(.ndc_events_meta, \(x, y){
-      rlang::inject(descr(x = modify_at(i, y, \(j) as.numeric(j, units = "days")), var = !!rlang::sym(y), transpose = !TRUE)) |> 
-        view(method = "render", table.classes = 'multi_stat', custom.css = "markdown.css") |>
-        tags$td()
-    })
-  })(master_drug_data, ndc_events_clean, c("alt_ndc", "fda_application_number", "market_date", "termination_date", "reactivation_date", "fda_approval_date")) |>
-  tags$tr() |>
-  tags$table()
-```
-
-### Take III {.tabset}
-
-Better, but there are still some issues: 
-
-#### Plot A
-
-```{r TAKE_III_VIZ_A}
-ndc_events_clean[, map(mget(c("termination_date", "reactivation_date")), \(x) today() - x)] |>
-  as.list() |> 
-  iwalk(\(x, y) na.omit(x) |> as.numeric()|> density() |> plot(main = y))
-
-```
-
-#### Plot B
-
-`termination_date` and `reactivation_date` appeared to be the culprits, so I filtered the data for records where "today" is greater than the termination and reactivation dates and the termination date either is greater than the market date or the termination date is `1900-01-01`:
-
-```{r TAKE_III_VIZ_B}
-(\(x, i, by){
-  .tmp_obj <<- define(
-      x[i, on = by, allow.cartesian = TRUE]
-      , unique(.SD[
-          (today() >= termination_date) & 
-          (today() >= reactivation_date) & 
-          or(termination_date == as.Date("1900-01-01"), market_date < termination_date)
-          ])
-      , .SD[runif(length(alt_ndc)) <= 0.25]
-      ) %T>% View()
-  
-  dfSummary(.tmp_obj) |> view(method = "render", custom.css = "markdown.css")
-})(master_drug_data, ndc_events_clean, c("alt_ndc", "fda_application_number", "market_date", "termination_date", "reactivation_date", "fda_approval_date"))
-
-```
-
-### Take IV {.tabset}
-
-Much better!  Combining the master drug data and event data (`master_drug_data` + `ndc_events_clean`), after some trial-and-error, I settled on the following showing the proportion of the margin of error to the mean grouped by drug route:
-
-#### Plot A 
-
-```{r TAKE_IV_VIZ_A} 
-ndc_events_clean %<>% .[
-          (today() >= termination_date) & 
-          (today() >= reactivation_date) & 
-          or(termination_date == as.Date("1900-01-01"), market_date < termination_date)
-          ]
-
-.temp_data <- {
+```{r DRUG_EVENTS_VIZ, echo=FALSE} 
+.cache$set("drug_obs_data", {
   ndc_events_clean[
-    , .(alt_ndc, fda_application_number, days_to_market, on_market_age, days_market_absent)
-    ][
     master_drug_data
-    , on = c("alt_ndc", "fda_application_number"), allow.cartesian = TRUE, nomatch = NULL
+    , on = c("alt_ndc", "fda_application_number", "fda_approval_date", "market_date", "termination_date", "reactivation_date")
+    , allow.cartesian = TRUE
+    , nomatch = 0
     ][, route_size := uniqueN(ndc), by = route] |> 
     unique() |>
     modify_at(c("days_to_market", "on_market_age", "days_market_absent"), \(x) as.difftime(x, units = "days"))
-  } 
-  
+  })
 
-.plot_days_to_market <- {
-  plot_ly(
-    data = define(
-      as.data.table(Rmisc::group.CI(days_to_market ~ route, data = .temp_data))
-      , .SD[order(days_to_market.mean, route)]
-      , days_text = sprintf("%.2f %s"
-                , ifelse(days_to_market.mean > 365, days_to_market.mean/365, days_to_market.mean)
-                , ifelse(days_to_market.mean > 365, "Years", "Days")
-                )
-      , .SD[.temp_data[, .(route, route_size)], on = "route", nomatch = 0] |> unique()
-      )
-    , x = ~log(days_to_market.mean, 7)
-    , y = ~(days_to_market.upper - days_to_market.mean)/days_to_market.mean
-    , split = ~route
-    , size = ~20 * route_size/max(route_size)
-    , hovertext = ~sprintf("<b>%s</b><br>Error Ratio: %.2f<br><br>%s", route, (days_to_market.upper - days_to_market.mean)/days_to_market.mean, days_text)
-    , hoverinfo = "text"
-    , width = 960
-    , height = 800 + 0.9
-    , type = "scatter"
-    , mode = "markers"
-    ) |>
-  plotly::config(displayModeBar = FALSE) |>
-    hide_colorbar() |>
-    hide_legend() |> 
-    layout(
-      xaxis = list(
-        title = list(text = "<span style='text-decoration:overline;'>X</span>: Days to Market (log<sub>7</sub> days)"
-                     , font = list(family = "Georgia"), side = "top")
-          , gridcolor = "#FFFFFF"
-          )
-      , yaxis = list(
-          title = "<span style='text-decoration:overline;'>X</span><sub>Err</sub>/<span style='text-decoration:overline;'>X</span>"
-          , gridcolor = "#FFFFFF"
-          )
-      , plot_bgcolor = "#EFEFEF"
-      , margin = list(t = -0.5, b = -0.5)
-      )
+if (!"drug_obs_data" %in% ls()){ 
+  makeActiveBinding(
+    "drug_obs_data"
+    , function() .cache$get("drug_obs_data")
+    , env = globalenv()
+    )
 }
 
-.plot_on_market_age <- {
-  plot_ly(
-    data = define(
-      as.data.table(Rmisc::group.CI(on_market_age ~ route, data = .temp_data))
-      , .SD[order(on_market_age.mean, route)]
-      , days_text = sprintf("%.2f %s"
-                             , ifelse(on_market_age.mean > 365, on_market_age.mean/365, on_market_age.mean)
-                             , ifelse(on_market_age.mean > 365, "Years", "Days"))
-      , .SD[.temp_data[, .(route, route_size)], on = "route", nomatch = 0] |> unique()
-      )
-    , x = ~log(on_market_age.mean, 7)
-    , y = ~(on_market_age.upper - on_market_age.mean)/on_market_age.mean
-    , split = ~route
-    , size = ~30 * route_size/max(route_size)
-    , hovertext = ~sprintf("<b>%s</b><br>Error Ratio: %.2f<br><br>%s", route, (on_market_age.upper - on_market_age.mean)/on_market_age.mean, days_text)
-    , hoverinfo = "text"
-    , width = 960
-    , height = 800 + 0.9
-    , type = "scatter"
-    , mode = "markers"
-    ) |>
-  plotly::config(displayModeBar = FALSE) |>
-    hide_colorbar() |>
-    # hide_legend() |> 
-    layout(
-      xaxis = list(
-        title = list(text = "<span style='text-decoration:overline;'>X</span>: Market Age (log<sub>7</sub> days)"
-                     , font = list(family = "Georgia"), side = "top")
-          , gridcolor = "#FFFFFF"
-          )
-      , yaxis = list(
-          title = "<span style='text-decoration:overline;'>X</span><sub>Err</sub>/<span style='text-decoration:overline;'>X</span>"
-          , gridcolor = "#FFFFFF"
-          )
-      , plot_bgcolor = "#EFEFEF"
-      , margin = list(t = -0.5, b = -0.5)
-      )
-}
+.plot <- plot_ly(width = 960, height = 700)
 
-subplot(
-  .plot_days_to_market
-  , .plot_on_market_age
-  , shareY = TRUE
-  , titleX = TRUE
-  , which_layout = 2
-  ) |>
+suppressWarnings(drug_obs_data[, .(route, days_to_market, on_market_age, days_market_absent)] |> 
+  # dplyr::slice_sample(prop = 0.1) |>
+  melt(id.vars = "route", variable.name = "Metric") |> 
+  setorder(route, Metric, value) |>
+  split(by = "route") |>
+  iwalk(\(x, y){ 
+    x <- define(x, map(.SD, \(i) calc.rms(as.numeric(i) |> modify_if(is.na, \(i) 0)) |> as.difftime(units = "days")) ~Metric);
+    .plot <<- add_trace(
+        p = .plot
+        , type = 'scatterpolar'
+        , fill = 'toself'
+        , r = ifelse(x$value == 0, 0, log(as.numeric(x$value), base = 30))
+        , theta = x$Metric
+        , hoverinfo = "text"
+        , hovertext = sprintf(
+              "<b>%s</b><br>%.2f %s"
+              , y
+              , ifelse(x$value > 365, x$value/365, x$value)
+              , ifelse(x$value > 365, "Years", "Days")
+              )
+        , name = y
+        , mode = "markers"
+        ) 
+  }))
+
+.plot |>
   config(mathjax = "cdn") |>
-  layout(title = list(
-      text = HTML("Z := (<span style='text-decoration:overline;'>X</span><sub>Err</sub>/<span style='text-decoration:overline;'>X</span> | Route)")
-      , legend = list(font = list(size = 10))
-      , font = list(family = "Georgia")
-      ))
-
+  layout(
+    title = list(
+        text = HTML("Metrics Radar by Drug Route (Log<sub>30</sub> Days)<br><span style='font-size:smaller; '>(Double- or single-click legend items)")
+        , legend = list(font = list(size = 10))
+        , font = list(family = "Georgia")
+        )
+    , margin = list(t = -0.5) 
+    ) |>
+  tags$p()
 ```
 
-#### Plot B
+## Question I<br><sup>Correlation</sup>
 
-```{r TAKE_IV_VIZ_B}
+I decided to start asking some questions of the data given the metrics defined earlier.  The first question was, "How does the correlation between `days_to_market` and `on_market_age` change by drug route?" To proceed, I invoked custom package [`smart.data`](https://github.com/delriaan/smart.data):
 
-.plot_data <- (\(x, y){ 
-    merge(
-      setDT(plotly_data(x))[, .(days_to_market.mean, err_ratio = days_to_market.upper/days_to_market.mean - 1, route, days_text)]
-      , setDT(plotly_data(y))[, .(on_market_age.mean, err_ratio = on_market_age.upper/on_market_age.mean - 1, route, days_text)]
-      , by = 'route'
-      , all.x = TRUE
-      , all.y = TRUE
-      )
-  })(.plot_days_to_market, .plot_on_market_age) |>
-    modify_at(c("err_ratio.x", "err_ratio.y"), \(x) ifelse(is.nan(x), 0, x)) |>
-    modify_at("route", factor) %>%
-    setnames(c("err_ratio.x", "err_ratio.y", "days_text.x", "days_text.y")
-             , c("err_ratio.days_to_market", "err_ratio.on_market_age", "days_text.days_to_market", "days_text.on_market_age"))
+```{r METRICS_CORRELATION} 
+suppressWarnings(suppressMessages({
+library(smart.data)
 
-.plot_days_to_market_age <- { 
-  plot_ly(
-    .plot_data
-    , x = ~log(days_to_market.mean, 7)
-    , y = ~log(on_market_age.mean, 7)
-    , split = ~route
-    , size = ~15 + 5*sqrt(err_ratio.days_to_market*err_ratio.on_market_age)
-    , hovertext = ~sprintf("<b>%s</b><br>Error Ratio Product: %.4f<br><br>Days to Market: %s<br><br>On Market Days: %s"
-                           , route
-                           , err_ratio.days_to_market*err_ratio.on_market_age
-                           , days_text.days_to_market, days_text.on_market_age
-                           )
-    , hoverinfo = "text"
-    , width = 960
-    , height = 800 + 0.9
-    , type = "scatter"
-    , mode = "markers"
-    ) |>
-  plotly::config(displayModeBar = FALSE) |>
-    hide_colorbar() |>
-    # hide_legend() |> 
-    layout(
-      xaxis = list(
-        title = list(text = "<span style='text-decoration:overline;'>X</span>: Days to Market (log<sub>7</sub>)"
-                      , font = list(family = "Georgia"))
-          , gridcolor = "#FFFFFF"
-        , type = "log")
-      , yaxis = list(
-          title = list(text = "<span style='text-decoration:overline;'>X</span>: On Market Age (log<sub>7</sub>)"
-                       , font = list(family = "Georgia"))
-          , gridcolor = "#FFFFFF"
-          )
-      , title = list(text = "Market Age vs. Days to Market by Drug Route<br><sup>Size ~ (Error Product)<sup>1/2</sup></sup>"
-                     , font = list(family = "Georgia"))
-      , plot_bgcolor = "#EFEFEF"
-      , margin = list(t = -0.5, b = -0.5)
-      )
+if (!"smrt_drugs" %in% .cache$keys()){
+  smrt.drug_obs_data <- smart.data$
+    new(x = .cache$get("drug_obs_data") |> print(), name = "drugs")$
+    taxonomy.rule(
+      term.map = if ("smrt_drug_taxonomy" %in% .cache$keys()){ .cache$get("smrt_drug_taxonomy") } else { data.table(term = "metrics", desc = "Metrics related to events and other descriptive statistics") }
+      , update = TRUE
+      )$
+    cache_mgr(action = upd) |>
+    invisible();
+  
+  .cache$set("smrt_drugs", smrt.drug_obs_data);
+  .cache$set("smrt_drug_taxonomy", smrt.drug_obs_data$smart.rules$for_usage)
+} else { 
+  invisible(smart.data$new(as.data.table(x = 1), "none"))
+  .cache$get("smrt_drugs")$cache_mgr(action = upd) 
 }
 
-.plot_days_to_market_age
+get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 
+  # View() 
+  setkey(route, alt_ndc, days_to_market, on_market_age) |>
+  split_f(~route) |>
+  map_dbl(\(x) x %$% cor(as.numeric(days_to_market), as.numeric(on_market_age))) |>
+  modify_if(is.na, \(x) 0) |> 
+  (\(x){ 
+    x <- x[order(x)]
+    nm <- names(x)
+    z <- calc.zero_mean(x, as.zscore = TRUE, use.population = TRUE)
+    y <- ratio(x + abs(min(x)), type="pareto", decimals = 6)
+    
+    .wh_scale <- 800 * c(1.2, .7)
+    
+    plot_ly(
+      x = z
+      , y = y
+      , size = 5 * exp(x) + 10
+      , width = .wh_scale[1]
+      , height = .wh_scale[2]
+      , hoverinfo = "text"
+      , hovertext = sprintf(fmt ="<b>%s</b><br><b>Y:</b> %.2f%% of Total<br><b>Cor</b>(days_to_market, on_market_age): %.2f<br><b>Z-score</b>(X): %.2f", nm, y * 100, x, z)
+      , color = x
+      , stroke = I("black")
+      , type = "scatter", mode = "markers"
+      ) |>
+      config(mathjax = "cdn", displayModeBar = FALSE) |>
+      layout(
+        xaxis = list(
+            title = list(
+              text = "Z-score<sub>X</sub>: X | Cor(m<sub>0</sub>, m<sub>1</sub>) ~ Route"
+              , font = list(size = 16, family = "Georgia"))
+            , gridcolor = "#FFFFFF"
+            )
+        , yaxis = list(
+            title = list(
+              text = "Cumulative Proportion (X)"
+              , font = list(size = 16, family = "Georgia"))
+            , gridcolor = "#FFFFFF"
+            )
+        , title = list(
+            text = "Correlation Coefficient (days_to_market vs. on_market_age) by Drug Route"
+            , font = list(family = "Georgia"))
+        , plot_bgcolor = rgb(.8,.8,.8)
+        , margin = list(b = 30, t = 50)
+        ) 
+  })()
+}))
 ```
-
