@@ -11,7 +11,7 @@ output:
 params:
   data_dir: data
   cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr')
-  git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect')
+  git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect', 'smart.data', 'event.vectors')
   refresh: !r FALSE
 ---
 
@@ -29,7 +29,7 @@ source("setup.R", local=TRUE)
 
 ## Purpose &<br> Project Metadata
 
-This project explores the Medicaid Drug Rebate Program (MDRP) database via [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) calls (description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)):
+This project explores the Medicaid Drug Rebate Program (MDRP) database.  Data is retrieved via the MDRP [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) (description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)) as well as general URL file retrieval routines:
 
 ```{r URLs, echo=FALSE}
 urls$data
@@ -42,10 +42,10 @@ tags$table(
   style = "width:600px; "
   , tags$tr(
       tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; "
-              , "CRAN", colspan = 3, width="65%")
-      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; "
+              , "CRAN", colspan = 3, width="70%")
+      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; word-wrap: break-word;"
                 , width = "*"
-                , HTML("GitHub (use <code>remotes::install_github('delriaan/{package}', subdir = 'pkg')</code> to install)"))
+                , HTML("GitHub<br><sub><code>remotes::install_github(</code><br><code>'delriaan/{package}', subdir = 'pkg')</code></sub>"))
       )
   , tags$tr(
       style = "align:top"
@@ -256,7 +256,7 @@ The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortun
 
 ## Master Drug<br>Data {.tabset .tabet-fade}
 
-The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create `master_drug_data` sampled below (**Note**: due to the size of the data, the join operation takes some time which is why the result is disk-cached for later retrieval. This caching approach is used for data retrieved or created during the data wrangling phase.):
+The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create `master_drug_data` (**Note**: due to the size of the data, the join operation takes some time which is why the result is disk-cached for later retrieval. This caching approach is used for data retrieved or created during the data wrangling phase.):
 
 ```{r MASTER_DRUG_DATA}
 if (params$refresh || !"master_drug_data" %in% .cache$keys()){
@@ -387,6 +387,7 @@ ndc_events_clean <- {
     , modify_at(.SD, c("termination_date", "reactivation_date"), \(x) as.Date(x, origin = "1970-01-01"))
   )}
 
+#
 (\(x, i, by){
   i <- define(x[i, on = by, allow.cartesian = TRUE]) ;
   imap(.ndc_events_meta, \(x, y){
@@ -406,8 +407,7 @@ Some of the 'Max'/'Min' values are negative; however, the number of records is r
 
 ### Drug Events<br>Visualization
 
-Combining the master drug data and event data (`master_drug_data` + `ndc_events_clean`), after some trial-and-error, I settled on the following showing the root-mean-square of metric values grouped by drug route:
-
+Combining the master drug data and event data (`master_drug_data` + `ndc_events_clean`), after some trial-and-error, I settled on the following showing the root-mean-square of metric values grouped by route of administration:
 
 ```{r DRUG_EVENTS_VIZ, echo=FALSE} 
 .cache$set("drug_obs_data", {
@@ -460,7 +460,7 @@ suppressWarnings(drug_obs_data[, .(route, days_to_market, on_market_age, days_ma
   config(mathjax = "cdn") |>
   layout(
     title = list(
-        text = HTML("Metrics Radar by Drug Route (Log<sub>30</sub> Days)<br><span style='font-size:smaller; '>(Double- or single-click legend items)")
+        text = HTML("Metrics Radar by Route of Administration (Log<sub>30</sub> Days)<br><span style='font-size:smaller; '>(Double- or single-click legend items)")
         , legend = list(font = list(size = 10))
         , font = list(family = "Georgia")
         )
@@ -469,11 +469,15 @@ suppressWarnings(drug_obs_data[, .(route, days_to_market, on_market_age, days_ma
   tags$p()
 ```
 
-## Question I<br><sup>Correlation</sup>
+## Question I<br><sup>Correlation</sup> {.tabset}
 
-I decided to start asking some questions of the data given the metrics defined earlier.  The first question was, "How does the correlation between `days_to_market` and `on_market_age` change by drug route?" To proceed, I invoked custom package [`smart.data`](https://github.com/delriaan/smart.data):
+I decided to start asking some questions of the data given the metrics defined earlier.  I decided to look into the correlation between pairs of metrics relative to a third:
 
-```{r METRICS_CORRELATION} 
+### Market Age
+
+"How does the correlation between *`days_to_market`* and *`on_market_age`* change by route of administration?":
+
+```{r METRICS_CORRELATION_I} 
 suppressWarnings(suppressMessages({
 library(smart.data)
 
@@ -482,7 +486,7 @@ if (!"smrt_drugs" %in% .cache$keys()){
     new(x = .cache$get("drug_obs_data") |> print(), name = "drugs")$
     taxonomy.rule(
       term.map = if ("smrt_drug_taxonomy" %in% .cache$keys()){ .cache$get("smrt_drug_taxonomy") } else { data.table(term = "metrics", desc = "Metrics related to events and other descriptive statistics") }
-      , update = TRUE
+      , update = !("smrt_drug_taxonomy" %in% .cache$keys())
       )$
     cache_mgr(action = upd) |>
     invisible();
@@ -535,7 +539,7 @@ get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_
             , gridcolor = "#FFFFFF"
             )
         , title = list(
-            text = "Correlation Coefficient (days_to_market vs. on_market_age) by Drug Route"
+            text = sprintf("Correlation Coefficient (<span style='text-emphasis-position:under; text-emphais: filled red double-circle; '>%s</span> vs. <span style='text-emphasis-position:under; text-emphais: filled red double-circle; '>%s</span>) by Route of Administration", "days_to_market", "on_market_age")
             , font = list(family = "Georgia"))
         , plot_bgcolor = rgb(.8,.8,.8)
         , margin = list(b = 30, t = 50)
@@ -543,3 +547,70 @@ get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_
   })()
 }))
 ```
+
+### Days Absent from Market
+
+*"How does the correlation between `days_to_market` and `days_market_absent` change by route of administration?"*:
+
+```{r METRICS_CORRELATION_II} 
+get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 
+  # View() 
+  setkey(route, alt_ndc, days_market_absent, on_market_age) |>
+  split_f(~route) |>
+  map_dbl(\(x) x %$% suppressWarnings(cor(as.numeric(days_market_absent), as.numeric(on_market_age)))) |>
+  modify_if(is.na, \(x) 0) |> 
+  (\(x){ 
+    x <- x[order(x)]
+    nm <- names(x)
+    z <- calc.zero_mean(x, as.zscore = TRUE, use.population = TRUE)
+    y <- ratio(x + abs(min(x)), type="pareto", decimals = 6)
+    
+    .wh_scale <- 800 * c(1.2, .7)
+    
+    plot_ly(
+      x = z
+      , y = y
+      , size = 5 * exp(x) + 10
+      , width = .wh_scale[1]
+      , height = .wh_scale[2]
+      , hoverinfo = "text"
+      , hovertext = sprintf(fmt ="<b>%s</b><br><b>Y:</b> %.2f%% of Total<br><b>Cor</b>(days_to_market, days_market_absent): %.2f<br><b>Z-score</b>(X): %.2f", nm, y * 100, x, z)
+      , color = x
+      , stroke = I("black")
+      , type = "scatter"
+      , mode = "markers"
+      ) |>
+      config(mathjax = "cdn", displayModeBar = FALSE) |>
+      layout(
+        xaxis = list(
+            title = list(
+              text = "Z-score<sub>X</sub>: X | Cor(m<sub>0</sub>, m<sub>1</sub>) ~ Route"
+              , font = list(size = 16, family = "Georgia"))
+            , gridcolor = "#FFFFFF"
+            )
+        , yaxis = list(
+            title = list(
+              text = "Cumulative Proportion (X)"
+              , font = list(size = 16, family = "Georgia"))
+            , gridcolor = "#FFFFFF"
+            )
+        , title = list(
+            text = sprintf("Correlation Coefficient (<span style='text-emphasis-position:under; text-emphais: filled red double-circle; '>%s</span> vs. <span style='text-emphasis-position:under; text-emphais: filled red double-circle; '>%s</span>) by Route of Administration", "days_to_market", "days_market_absent")
+            , font = list(family = "Georgia"))
+        , plot_bgcolor = rgb(.8,.8,.8)
+        , margin = list(b = 30, t = 50)
+        ) 
+})()
+
+```
+
+</div>
+Market age relative to days to market shows more variability in correlation distribution.  This is not to make an claim of statistically significant differentiation; however, it may be worth exploring whether or not there are clusters of administration routes based on event correlation.  A future update may address this, but this is as deep of exploration I'll go for now.
+<br>
+<br>
+<div>
+
+
+## Question II<br><sup>Event Clusters</sup></br>
+
+Another way to look at the data is to consider grouped durations and the cross-temporal sequences among them.  As this forms the basis of a network, I'll use custom package [`event.vectors`](https://github.com/delriaan/event.vectors) to accomplish this in a future update.

@@ -18,3 +18,10 @@ inspect |>
   rbindlist(idcol = "sample_id") |>
   define(.SD[!grepl("Resid", term)] |> setorder(term, p.value)) |>
   print()
+
+
+# Route of Administration URL ----
+roa_content <- xml2::read_html("https://www.fda.gov/drugs/data-standards-manual-monographs/route-administration") |> 
+                xml2::xml_find_all(xpath = "//table") |> 
+                as.character() |> 
+                HTML()

@@ -32,9 +32,10 @@ assign("urls", { list(
       `Data Dictionary` = c("https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf", " (Medicaid.gov)")
       , `MDRP Data` = c("https://download.medicaid.gov/data/drugproducts1q_2023.csv", "")
       , `openFDA Drug Data` = c("https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip", " (used to augment MDRP data)")) |> 
-      purrr::imap(\(x, y) htmltools::tags$li(htmltools::tags$a(href = x[1], y), x[2])) |> 
-      htmltools::tags$ol()
-    , git_libs = globalenv()$params$git_libs |>
+            purrr::imap(\(x, y) htmltools::tags$li(htmltools::tags$a(href = x[1], y), x[2])) |> 
+            htmltools::tags$ol()
+      , `Route of Administration` = c("https://www.fda.gov/drugs/data-standards-manual-monographs/route-administration", "FDA.gov")
+    , git_libs = params$git_libs |>
         purrr::map(\(x) htmltools::tags$li(
             htmltools::tags$a(href=paste0("https://github.com/delriaan/", x)
                               , title = paste0("delriaan/", x)
@@ -60,7 +61,7 @@ split_f <- function(x, f, ...){
 #' 
 #' @return See \code{?split}
 #' 
-  if (is_formula(k)){ f <- terms(f, data = x) |> attr("term.labels") }
+  if (is_formula(f)){ f <- terms(f, data = x) |> attr("term.labels") }
   if (is.data.table(x)){ split(x, by = f, ...) } else { split(x, f = f, ...)}
 }
 
