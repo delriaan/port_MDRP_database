@@ -16,11 +16,14 @@ params:
 ---
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
-knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
+knitr::opts_chunk$set(
+  opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE)
+  )
+
 source("setup.R", local=TRUE)
 ```
 
-```{=html}
+```{=js}
 <script type="text/javascript" async
   src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
 </script>
@@ -35,17 +38,18 @@ This project explores the Medicaid Drug Rebate Program (MDRP) database.  Data is
 urls$data
 ```
 
+All files for this project are hosted on [GitHub](https://github.com/delriaan/port_MDRP_database)
+
+<hr>
+
 ### Required LIbraries
 
 ```{r echo=FALSE}
 tags$table(
-  style = "width:600px; "
+  id = "req_libs_table"
   , tags$tr(
-      tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#EEEEEE; "
-              , "CRAN", colspan = 3, width="70%")
-      , tags$th(style = "text-align:middle; border: solid 2px #AAAAFF; background-color:#AAAAAA; word-wrap: break-word;"
-                , width = "*"
-                , HTML("GitHub<br><sub><code>remotes::install_github(</code><br><code>'delriaan/{package}', subdir = 'pkg')</code></sub>"))
+      tags$th(class="req_libs cran_libs", "CRAN", colspan = 3, width="67%; ")
+      , tags$th(class="req_libs git_libs", "GitHub", width = "*")
       )
   , tags$tr(
       style = "align:top"
@@ -54,16 +58,17 @@ tags$table(
           , .after = 5
           , .step = 6
           , .f = \(x){ 
-              sprintf("<li>%s</li>", x) |> HTML() |> 
-                tags$ul() |> 
-                tags$td(style = "text-align:middle; background-color:#AAAAAA; ")
+                map(x, \(i) tags$span(i, tags$br())) |> 
+                tags$td(class="req_libs git_libs")
               }
-          , .complete = TRUE) |> 
+          , .complete = TRUE
+          ) |> 
           purrr::compact()
-      , tags$td(style = "background-color:#EEEEEE; padding-right:20px; ", urls$git_libs)
+      , tags$td(class="req_libs cran_libs", urls$git_libs)
       )
   ) |> tags$p()
 ```
+
 
 ## Data <br>Wrangling
 
@@ -251,7 +256,7 @@ tags$tr() |>
 tags$table()
 ```
 
-The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, A function (`check_ndc_format()` &mdash; see `r tags$a(href = ".\\setup.R", target="_blank", "setup.R")` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
+The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, A function (`check_ndc_format()` &mdash; see `r htmltools::tags$a(href = ".\\setup.R", target="_blank", "setup.R")` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
 
 
 ## Master Drug<br>Data {.tabset .tabet-fade}

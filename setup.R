@@ -31,19 +31,22 @@ assign("urls", { list(
     data = list(
       `Data Dictionary` = c("https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf", " (Medicaid.gov)")
       , `MDRP Data` = c("https://download.medicaid.gov/data/drugproducts1q_2023.csv", "")
-      , `openFDA Drug Data` = c("https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip", " (used to augment MDRP data)")) |> 
-            purrr::imap(\(x, y) htmltools::tags$li(htmltools::tags$a(href = x[1], y), x[2])) |> 
-            htmltools::tags$ol()
+      , `openFDA Drug Data` = c("https://download.open.fda.gov/drug/ndc/drug-ndc-0001-of-0001.json.zip"
+                                , " (used to augment MDRP data)")
       , `Route of Administration` = c("https://www.fda.gov/drugs/data-standards-manual-monographs/route-administration", "FDA.gov")
-    , git_libs = params$git_libs |>
-        purrr::map(\(x) htmltools::tags$li(
-            htmltools::tags$a(href=paste0("https://github.com/delriaan/", x)
-                              , title = paste0("delriaan/", x)
-                              , target = "_blank"
-                              , x)
-          )) |> 
-        list() |> 
-        htmltools::tags$ul()
+      ) |> 
+      purrr::imap(\(x, y) htmltools::tags$li(htmltools::tags$a(href = x[1], y), x[2])) |> 
+      htmltools::tags$ol()
+    , git_libs = purrr::map(params$git_libs, \(x){
+          htmltools::tags$span(
+            htmltools::tags$a(
+              href = paste0("https://github.com/delriaan/", x)
+              , title = paste0("delriaan/", x)
+              , target = "_blank"
+              , x)
+            , htmltools::tags$br()
+            )
+          })
     )}, envir = as.environment("nb_env"))
 
 .cache <- cachem::cache_disk(dir = "r_session_cache")
