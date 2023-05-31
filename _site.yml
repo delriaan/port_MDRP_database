@@ -1,0 +1,8 @@
+name: "Exploring-the-MDRP-Database"
+exclude: ["markdown.css", "LICENSE", "setup.R"]
+navbar:
+  title: "Exploring the Medicaid Drug Rebate Program (MDRP) Database"
+  left:
+    - text: "Home"
+  href: index.html
+  
