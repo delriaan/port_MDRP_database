@@ -22,12 +22,17 @@ library(book.of.workflow)
 load_unloaded(!!!params$cran_libs, autoinstall = TRUE)
 load_unloaded(!!!params$git_libs)
 
+if (!".cache" %in% ls()){ .cache <- cachem::cache_disk(dir = "r_session_cache") }
+
+#
 if (!"nb_env" %in% search()){ 
   attach(rlang::env(), name = "nb_env")
   makeActiveBinding("nb_env", \() as.environment("nb_env"), env = as.environment("nb_env"))
 }
 
-assign("urls", { list(
+#
+if (!"urls" %in% ls("nb_env")){ 
+  assign("urls", { list(
     data = list(
       `Data Dictionary` = c("https://www.medicaid.gov/medicaid-chip-program-information/by-topics/prescription-drugs/downloads/recordspecficationanddefinitions.pdf", " (Medicaid.gov)")
       , `MDRP Data` = c("https://download.medicaid.gov/data/drugproducts1q_2023.csv", "")
@@ -47,13 +52,10 @@ assign("urls", { list(
             , htmltools::tags$br()
             )
           })
-    )}, envir = as.environment("nb_env"))
-
-.cache <- cachem::cache_disk(dir = "r_session_cache")
-
+    )}, envir = as.environment("nb_env"));
+}
 
 # :: Functions
-# 
 split_f <- function(x, f, ...){
 #' Formula Split
 #' 

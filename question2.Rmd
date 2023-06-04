@@ -1,0 +1,62 @@
+---
+title: "Question II: Event Clusters"
+output:
+  html_notebook:
+    css: markdown.css
+    code_folding: hide
+  html_document:
+    df_print: paged
+    css: markdown.css
+    code_folding: hide
+params:
+  data_dir: data
+  cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr')
+  git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect', 'smart.data', 'event.vectors')
+  refresh: !r FALSE
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(
+  opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE)
+  )
+
+source("setup.R", local=TRUE)
+```
+
+```{=js}
+<script type="text/javascript" async
+  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
+</script>
+```
+
+# {.tabset .tabset-fade .tabset-pills}
+
+The next question I wanted to answer was if there were meaningful event clusters in the data. I decided to construct an event network and compare temporal proximity with key attributes of each event.  For the first pass of analysis, I stayed with the administration route (refered to as _route_ hereafter) as the grouping factor.  To create the temporal network, I used my custom package [`event.vectors`](https://github.com/delriaan/event.vectors) which leverages R6 classes.
+
+## Preparation 
+
+To prepare the input data, I split `master_drug_data` into smaller data tables defined by route:
+
+```{r PREP_DATA}
+# Split 'master_drug_data' and store in attached environment 'nb_env' ("notebook environment")
+master_drug_data |> split(by = "route") |> list2env(envir = nb_env)
+```
+
+
+## Execution
+
+Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing:
+
+```{r EVENT_NETWORK}
+load_unloaded(event.vectors)
+mdrp_events <- event.vectors$new()
+mdrp$configure(
+  src.defs = paste("nb_env", master_drug_data$route |> unique(), sep = "$")
+  , contexts = master_drug_data$route |> unique()
+  , map.fields  = replicate(n = master_drug_data$route |> uniqueN()
+                            , expr = list(
+                              jk = "alt_ndc", time_start_idx = "market_date", time_end_idx = "termination_date"))
+  , exclude.mix
+  , chatty
+)
+```
