@@ -16,9 +16,7 @@ params:
 ---
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
-knitr::opts_chunk$set(
-  opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE)
-  )
+knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
 
 source("setup.R", local=TRUE)
 ```
@@ -35,28 +33,85 @@ The next question I wanted to answer was if there were meaningful event clusters
 
 ## Preparation 
 
-To prepare the input data, I split `master_drug_data` into smaller data tables defined by route:
+To prepare the input data, I had to decide how to split `master_drug_data` into smaller data tables based on one or more shared features (`event.vectors` requires at least two classes of data for cross-comparison).  As a decision aid, I leveraged the [`dfSummary()`](mdd_summary.html) function from the [summarytools](https://www.rdocumentation.org/packages/summarytools/versions/1.0.1/topics/summarytools-package) package.
+
+```{r PREP_SUMMARY}
+summarytools::dfSummary(
+  master_drug_data
+  , display.labels = FALSE
+  , graph.magnif = 0.5
+  ) |> 
+  summarytools::view(
+    method = "browser"
+    , file = "docs/mdd_summary.html"
+    )
+```
+
+After reviewing the summary, choosing one of `drug_category` or `dea_schedule` made the most sense as the number of levels were not too many given the scale of comparisons considered (${n \choose k} + {n\choose k}^* \equiv 2{n\choose k}$, where ${n\choose k}^*$ is the mirror of ${n\choose k}$).
+
+As a heuristic checking for insufficient interaction counts, I created several sampled frequency tables based on the candidate fields:
+
+```{r PREP_FREQ_TBL}
+# Create an array (N x M x K) created from samples of `mdrp_crosstab` 
+#   cross-tabulated over 'drug_category' and 'dea_schedule' and repeating
+#   this sampling K times
+mdrp_crosstab <- replicate(
+  n = 30
+  ,  master_drug_data[(runif(n = length(alt_ndc)) <= 0.25)] %$% 
+    (\(x) x/sum(x))(table(drug_category, dea_schedule))
+  );
+
+expand.grid(x = 1:dim(mdrp_crosstab)[3], y = 1:dim(mdrp_crosstab)[3]) |> 
+  pmap_dbl(\(x, y) sum(abs(mdrp_crosstab[,,x] - mdrp_crosstab[,,y]))) |>
+  density() |> 
+  plot(xlab = "Paired Difference Totals", main = "Density of Total Differences")
+
+```
+
+Even though the distribution of differences over the replications is bi-modal, the range is quite small, and most of the distribution is located at values greater than zero.  Therefore, I decided to use the combination of `drug_category` and `dea_schedule` to split `master_drug_data`:
 
 ```{r PREP_DATA}
 # Split 'master_drug_data' and store in attached environment 'nb_env' ("notebook environment")
-master_drug_data |> split(by = "route") |> list2env(envir = nb_env)
+master_drug_data |> 
+  split(by = c("drug_category", "dea_schedule")) %T>% 
+  (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() |>
+  list2env(envir = nb_env)
 ```
-
 
 ## Execution
 
-Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing:
+Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing.  Before proceeding
 
 ```{r EVENT_NETWORK}
-load_unloaded(event.vectors)
+load_unloaded(event.vectors, furrr, tictoc)
+
 mdrp_events <- event.vectors$new()
-mdrp$configure(
-  src.defs = paste("nb_env", master_drug_data$route |> unique(), sep = "$")
-  , contexts = master_drug_data$route |> unique()
-  , map.fields  = replicate(n = master_drug_data$route |> uniqueN()
-                            , expr = list(
-                              jk = "alt_ndc", time_start_idx = "market_date", time_end_idx = "termination_date"))
-  , exclude.mix
-  , chatty
-)
+
+mdrp_events$configure(
+  src.defs = paste("nb_env", ls("nb_env", pattern = "^[A-Z]"), sep = " %$% ") |> rlang::parse_exprs()
+  , contexts = ls("nb_env", pattern = "^[A-Z]")
+  , map.fields = {
+      replicate(
+        n = ls("nb_env", pattern = "^[A-Z]") |> uniqueN()
+        , expr = { c("alt_ndc", "market_date", "termination_date")}
+        , simplify = FALSE
+        )}
+  , chatty = TRUE
+  )
+
+future_cluster <- makeClusterPSOCK(15)
+plan(tweak(cluster, workers = future_cluster))
+
+tic(glue::glue("{Sys.time()} Creating the Event Vectors"))
+mdrp_events$make.evs_universe(
+  mGap >= 6
+  , mGap <= 12
+  , time.control = list(months(0), months(6))
+  , graph.control = NULL
+  , unit = "month"
+  , furrr_opts = furrr::furrr_options(scheduling = Inf, seed = TRUE)
+  , graph.only = FALSE
+  , chatty = FALSE
+  )
+toc(log = TRUE)
 ```

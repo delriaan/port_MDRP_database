@@ -1,3 +1,4 @@
+# Cumbersome way to force execution order without renaming files just to order them
 dir(pattern = "index.+Rmd$") |> 
   c(dir(pattern = "etl.+Rmd$")) |> 
   c(dir(pattern = "ques.+1.+Rmd$")) |> 
@@ -13,5 +14,7 @@ dir(pattern = "index.+Rmd$") |>
       )
   })
 
+# Copy 'nb.html' files to the 'docs' directory which allows the site
+#   to be served via github.io
 dir("docs", pattern = "nb.html", full.names = TRUE) %>%
   file.rename(to = stringi::stri_replace_first_fixed(., "nb.", ""))
