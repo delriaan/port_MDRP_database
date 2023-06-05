@@ -68,19 +68,21 @@ expand.grid(x = 1:dim(mdrp_crosstab)[3], y = 1:dim(mdrp_crosstab)[3]) |>
 
 ```
 
-Even though the distribution of differences over the replications is bi-modal, the range is quite small, and most of the distribution is located at values greater than zero.  Therefore, I decided to use the combination of `drug_category` and `dea_schedule` to split `master_drug_data`:
+Even though the distribution of differences over the replications is bi-modal, the range is quite small, and most of the distribution is located at values greater than zero.  Therefore, I decided to use `dea_schedule` to split `master_drug_data` and `drug_category` as the "join-key" (see `?``event.vectors-package`` `).  Also, I limited the data to market dates starting in 2020 and forced all values in `termination_date` more than six months in the future (relative to "today") to six months in the future.
 
 ```{r PREP_DATA}
 # Split 'master_drug_data' and store in attached environment 'nb_env' ("notebook environment")
-master_drug_data |> 
-  split(by = c("drug_category", "dea_schedule")) %T>% 
-  (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() |>
+master_drug_data[year(market_date) >= 2020] |>
+  modify_at("termination_date", \(x) modify_if(x, \(i) (i - today()) > months(6), \(i) today() + months(6)))
+  split(by = "dea_schedule") %T>% 
+  (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() %>% 
+  rlang::set_names(names(.) |> stri_replace_first_fixed("NA", "C0")) |>
   list2env(envir = nb_env)
 ```
 
 ## Execution
 
-Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing.  Before proceeding
+Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing:
 
 ```{r EVENT_NETWORK}
 load_unloaded(event.vectors, furrr, tictoc)
@@ -93,20 +95,20 @@ mdrp_events$configure(
   , map.fields = {
       replicate(
         n = ls("nb_env", pattern = "^[A-Z]") |> uniqueN()
-        , expr = { c("alt_ndc", "market_date", "termination_date")}
+        , expr = { c("drug_category", "market_date", "termination_date")}
         , simplify = FALSE
         )}
   , chatty = TRUE
   )
 
-future_cluster <- makeClusterPSOCK(15)
+future_cluster <- makeClusterPSOCK(5)
 plan(tweak(cluster, workers = future_cluster))
 
 tic(glue::glue("{Sys.time()} Creating the Event Vectors"))
 mdrp_events$make.evs_universe(
-  mGap >= 6
-  , mGap <= 12
-  , time.control = list(months(0), months(6))
+  mGap >= months(-6)
+  , mGap <= months(12)
+  # , time.control = list(months(0), months(6))
   , graph.control = NULL
   , unit = "month"
   , furrr_opts = furrr::furrr_options(scheduling = Inf, seed = TRUE)
@@ -114,4 +116,9 @@ mdrp_events$make.evs_universe(
   , chatty = FALSE
   )
 toc(log = TRUE)
+
+plan(sequential)
+parallel::stopCluster(future_cluster)
+rm(future_cluster)
+gc()
 ```
