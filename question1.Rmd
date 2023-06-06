@@ -52,10 +52,13 @@ if (!"smrt_drugs" %in% .cache$keys()){
     invisible();
   
   .cache$set("smrt_drugs", smrt.drug_obs_data);
-  .cache$set("smrt_drug_taxonomy", smrt.drug_obs_data$smart.rules$for_usage)
+  .cache$set("smrt_drug_taxonomy", smrt.drug_obs_data$smart.rules$for_usage);
 } else { 
   invisible(smart.data$new(as.data.table(x = 1), "none"))
-  .cache$get("smrt_drugs")$cache_mgr(action = upd) 
+  (\(x){
+    x$data <- .cache$get("drug_obs_data")
+    x$cache_mgr(action = upd)
+  })(.cache$get("smrt_drugs"))
 }
 
 get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 

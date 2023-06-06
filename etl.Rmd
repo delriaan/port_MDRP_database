@@ -179,7 +179,11 @@ list(
         )[, paste(stri_length(labeler_code), stri_length(product_code), sep = "-")] |>
         freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))) |>
         define(
-          NDC.Format = ifelse(ratio(N, type = "pareto", decimals = 6) < 0.1, "Other<br><sup>%s formats</sup>", NDC.Format) %>%
+          NDC.Format = ifelse(
+            ratio(N, type = "pareto", decimals = 6) < 0.1
+              , "Other<br><sup>%s formats</sup>"
+              , NDC.Format
+              ) %>%
             modify_at(
               .at = which(grepl("Other", .))
               , .f = \(x) sprintf(x, sum(grepl("Other", .)))
@@ -238,9 +242,9 @@ if (params$refresh || !"master_drug_data" %in% .cache$keys()){
       , by = .EACHI
       ][
       , `:=`(
-        pharm_class = map_chr(pharm_class, \(x) unlist(x) %||% "~")
-        , route = map_chr(route, \(x) unlist(x) %||% "~")
-        )
+          pharm_class = map_chr(pharm_class, \(x) unlist(x) %||% "~")
+          , route = map_chr(route, \(x) unlist(x) %||% "~")
+          )
       ]
     })(
     api_data %>% 
@@ -249,6 +253,7 @@ if (params$refresh || !"master_drug_data" %in% .cache$keys()){
     , openFDA_ndc
     ))
 }
+
 if (!"master_drug_data" %in% ls()){ 
   makeActiveBinding("master_drug_data", function(){ .cache$get("master_drug_data") }, env = globalenv());
 }
@@ -321,7 +326,14 @@ The resulting object was captured in `ndc_events_clean`:
 ndc_events_clean <- { 
   define(
     ndc_events
-    , modify_at(.SD, c("termination_date", "reactivation_date"), \(x) ifelse(today() < x, NA, x))
+    , modify_at(
+        .SD, "termination_date"
+        , \(x) ifelse(is.na(x), today() + weeks(24), ifelse(today() < x, today() + weeks(24), x))
+        )
+    , modify_at(
+        .SD, "reactivation_date"
+        , \(x) ifelse(is.na(x), termination_date, ifelse(x > today(), today() + weeks(24), x))
+        )
     , cbind(
         .SD
         , define({
@@ -338,14 +350,19 @@ ndc_events_clean <- {
           , days_to_market = market_date - fda_approval_date
           , on_market_age = 
               apply(.SD[, .(termination_date.bool, reactivation_date.bool, termination_date)]
-                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], today(), i[[3]]), today()) }) -
-              apply(.SD[, .(termination_date.bool, reactivation_date.bool, market_date, reactivation_date)]
-                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], i[[4]], i[[3]]), i[[3]]) })
+                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], today(), i[[3]]), today()) 
+                    }) -
+              apply(.SD[, .(termination_date.bool, reactivation_date.bool
+                            , market_date, reactivation_date)]
+                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], i[[4]], i[[3]]), i[[3]]) 
+                    })
           , days_market_absent = 
-              apply(.SD[, .(reactivation_date.bool, reactivation_date)]
-                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) }) -
+                apply(.SD[, .(reactivation_date.bool, reactivation_date)]
+                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) 
+                    }) -
                 apply(.SD[, .(termination_date.bool, termination_date)]
-                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) })
+                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) 
+                    })
           , ~days_to_market + on_market_age + days_market_absent
           )
       )
@@ -354,15 +371,22 @@ ndc_events_clean <- {
 
 #
 (\(x, i, by){
-  i <- define(x[i, on = by, allow.cartesian = TRUE]) ;
+  i <- define(x[i, on = by, allow.cartesian = TRUE]);
   imap(.ndc_events_meta, \(x, y){
-    rlang::inject(descr(x = modify_at(i, y, \(j) as.numeric(j, units = "days")), var = !!rlang::sym(y), transpose = !TRUE)) |> 
+    rlang::inject(descr(
+      x = modify_at(i, y, \(j) as.numeric(j, units = "days"))
+      , var = !!rlang::sym(y)
+      , transpose = !TRUE
+      )) |> 
       view(method = "render", table.classes = 'multi_stat', custom.css = "markdown.css") |>
       tags$td()
-  })
-})(master_drug_data, ndc_events_clean, c("alt_ndc", "fda_application_number", "market_date", "termination_date", "reactivation_date", "fda_approval_date")) |>
-tags$tr() |>
-tags$table()
+  });
+})(master_drug_data, ndc_events_clean, { c("alt_ndc", "fda_application_number"
+       , "market_date", "termination_date"
+       , "reactivation_date", "fda_approval_date"
+       )}) |>
+  tags$tr() |>
+  tags$table()
 ```
 
 Some of the 'Max'/'Min' values are negative; however, the number of records is relatively small and, more importantly, explainable:
@@ -377,21 +401,32 @@ Combining the master drug data and event data (`master_drug_data` + `ndc_events_
 ```{r DRUG_EVENTS_VIZ, echo=FALSE} 
 .cache$set("drug_obs_data", {
   ndc_events_clean[
-    master_drug_data
-    , on = c("alt_ndc", "fda_application_number", "fda_approval_date", "market_date", "termination_date", "reactivation_date")
+    master_drug_data[
+      , `:=`(
+          termination_date = termination_date |> 
+            (\(x) ifelse(is.na(x), today() + weeks(24), ifelse(today() < x, today() + weeks(24), x)))()
+          , reactivation_date = reactivation_date |> 
+              (\(x) ifelse(is.na(x), termination_date, ifelse(x > today(), today() + weeks(24), x)))()
+        )
+    ]
+    , on = c("alt_ndc", "fda_application_number"
+             , "fda_approval_date", "market_date"
+             , "termination_date", "reactivation_date")
     , allow.cartesian = TRUE
     , nomatch = 0
-    ][, route_size := uniqueN(ndc), by = route] |> 
+    ][
+    , route_size := uniqueN(ndc)
+    , by = route
+    ] |> 
     unique() |>
-    modify_at(c("days_to_market", "on_market_age", "days_market_absent"), \(x) as.difftime(x, units = "days"))
+    modify_at(
+      c("days_to_market", "on_market_age", "days_market_absent")
+      , \(x) as.difftime(x, units = "days")
+      )
   })
 
 if (!"drug_obs_data" %in% ls()){ 
-  makeActiveBinding(
-    "drug_obs_data"
-    , function() .cache$get("drug_obs_data")
-    , env = globalenv()
-    )
+  makeActiveBinding("drug_obs_data", function() .cache$get("drug_obs_data"), env = globalenv())
 }
 
 .plot <- plot_ly(width = 960, height = 700)
@@ -401,9 +436,11 @@ suppressWarnings(drug_obs_data[, .(route, days_to_market, on_market_age, days_ma
   melt(id.vars = "route", variable.name = "Metric") |> 
   setorder(route, Metric, value) |>
   split(by = "route") |>
-  iwalk(\(x, y){ 
-    x <- define(x, map(.SD, \(i) calc.rms(as.numeric(i) |> modify_if(is.na, \(i) 0)) |> as.difftime(units = "days")) ~Metric);
-    .plot <<- add_trace(
+  iwalk(\(x, y){
+    x <- define(x
+          , map(.SD, \(i) calc.rms(as.numeric(i) |> modify_if(is.na, \(i) 0)) |> as.difftime(units = "days")) ~Metric);
+    
+    .plot <<- { add_trace(
         p = .plot
         , type = 'scatterpolar'
         , fill = 'toself'
@@ -418,7 +455,7 @@ suppressWarnings(drug_obs_data[, .(route, days_to_market, on_market_age, days_ma
               )
         , name = y
         , mode = "markers"
-        ) 
+        )}
   }))
 
 .plot |>

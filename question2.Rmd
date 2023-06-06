@@ -17,7 +17,6 @@ params:
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
-
 source("setup.R", local=TRUE)
 ```
 
@@ -55,11 +54,9 @@ As a heuristic checking for insufficient interaction counts, I created several s
 # Create an array (N x M x K) created from samples of `mdrp_crosstab` 
 #   cross-tabulated over 'drug_category' and 'dea_schedule' and repeating
 #   this sampling K times
-mdrp_crosstab <- replicate(
-  n = 30
-  ,  master_drug_data[(runif(n = length(alt_ndc)) <= 0.25)] %$% 
-    (\(x) x/sum(x))(table(drug_category, dea_schedule))
-  );
+mdrp_crosstab <- replicate(n = 30, { master_drug_data[(runif(n = length(alt_ndc)) <= 0.25)] %$% 
+      (\(x) x/sum(x))(table(drug_category, dea_schedule))
+    })
 
 expand.grid(x = 1:dim(mdrp_crosstab)[3], y = 1:dim(mdrp_crosstab)[3]) |> 
   pmap_dbl(\(x, y) sum(abs(mdrp_crosstab[,,x] - mdrp_crosstab[,,y]))) |>
