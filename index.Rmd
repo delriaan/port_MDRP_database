@@ -16,8 +16,7 @@ params:
 ---
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
-knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE
-                    , warning=FALSE, message=FALSE));
+knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
 
 source("setup.R", local=TRUE)
 ```
@@ -27,7 +26,6 @@ source("setup.R", local=TRUE)
   src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
 </script>
 ```
-
 # Introduction
 
 This project explores the Medicaid Drug Rebate Program (MDRP) database.  Data is retrieved via the MDRP [API](https://data.medicaid.gov/dataset/0ad65fe5-3ad3-5d79-a3f9-7893ded7963a) (description [here](https://www.medicaid.gov/medicaid/prescription-drugs/medicaid-drug-rebate-program/medicaid-drug-rebate-program-data/index.html)) as well as general URL file retrieval routines:

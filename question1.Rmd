@@ -58,6 +58,7 @@ if (!"smrt_drugs" %in% .cache$keys()){
   (\(x){
     x$data <- .cache$get("drug_obs_data")
     x$cache_mgr(action = upd)
+    .cache$set("smrt_drugs", x);
   })(.cache$get("smrt_drugs"))
 }
 

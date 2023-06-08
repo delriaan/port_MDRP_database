@@ -46,32 +46,50 @@ summarytools::dfSummary(
     )
 ```
 
-After reviewing the summary, choosing one of `drug_category` or `dea_schedule` made the most sense as the number of levels were not too many given the scale of comparisons considered (${n \choose k} + {n\choose k}^* \equiv 2{n\choose k}$, where ${n\choose k}^*$ is the mirror of ${n\choose k}$).
 
-As a heuristic checking for insufficient interaction counts, I created several sampled frequency tables based on the candidate fields:
+After reviewing the summary, choosing one of `cod_status`, `drug_category` or `dea_schedule` made the most sense as the number of levels were not too many given the scale of comparisons considered (${n \choose k} + {n\choose k}^* \equiv 2{n\choose k}$, where ${n\choose k}^*$ is the mirror of ${n\choose k}$).
+
+In preparing to use the `event.vectors` package, decisions about how to split the drug observation data into subgroups across which a common "join-key" is projected is required. As a heuristic in checking for sufficient interaction counts, called $\text{replications(formula, ...)}_i$: $i$ calls to to `replications()` using as the formula argument $$\text{formula}:=\enspace \sim \text{cod_status}*\text{drug_category} + \text{cod_status}*\text{dea_schedule} + \text{drug_category}:\text{dea_schedule}$$
 
 ```{r PREP_FREQ_TBL}
-# Create an array (N x M x K) created from samples of `mdrp_crosstab` 
-#   cross-tabulated over 'drug_category' and 'dea_schedule' and repeating
-#   this sampling K times
-mdrp_crosstab <- replicate(n = 30, { master_drug_data[(runif(n = length(alt_ndc)) <= 0.25)] %$% 
-      (\(x) x/sum(x))(table(drug_category, dea_schedule))
-    })
+mdrp_crosstab <- replicate(n = 30, { 
+  replications(
+    formula = ~ cod_status*drug_category + cod_status*dea_schedule + drug_category:dea_schedule
+    , data = get.smart("drugs")$
+              use(identifier
+                  , retain = c(dea, drug_cat, cod_stat)
+                  , subset = runif(n = length(alt_ndc)) <= 0.25
+                  ) |> modify_at("cod_status", as.factor)
+    )
+  })
 
-expand.grid(x = 1:dim(mdrp_crosstab)[3], y = 1:dim(mdrp_crosstab)[3]) |> 
-  pmap_dbl(\(x, y) sum(abs(mdrp_crosstab[,,x] - mdrp_crosstab[,,y]))) |>
-  density() |> 
-  plot(xlab = "Paired Difference Totals", main = "Density of Total Differences")
+setattr(
+  mdrp_crosstab
+  , "interactions"
+  , apply(mdrp_crosstab
+      , MARGIN = 1
+      , FUN = \(k) reduce(k, rbind) |> apply(2, \(x) Rmisc::CI(x))
+      ) |> print()
+  )
 
 ```
 
-Even though the distribution of differences over the replications is bi-modal, the range is quite small, and most of the distribution is located at values greater than zero.  Therefore, I decided to use `dea_schedule` to split `master_drug_data` and `drug_category` as the "join-key" (see `?``event.vectors-package`` `).  Also, I limited the data to market dates starting in 2020 and forced all values in `termination_date` more than six months in the future (relative to "today") to six months in the future.
+The data will need to be filtered for those levels of `cod_status` returning *0*. I decided to use `drug_category` and `dea_schedule` to split drug observation data with `cod_status` as the "join-key" (see `?``event.vectors-package`` `).  
+
+Also, I limited the data to market dates starting in 2019 and forced all values in `termination_date` more than six months in the future (relative to "today") to six months in the future: this was done in order to preserve the sense of "the future" without unnecessarily allowing forlarge temporal differences in light of the way `event.vectors` works.
 
 ```{r PREP_DATA}
 # Split 'master_drug_data' and store in attached environment 'nb_env' ("notebook environment")
-master_drug_data[year(market_date) >= 2020] |>
-  modify_at("termination_date", \(x) modify_if(x, \(i) (i - today()) > months(6), \(i) today() + months(6)))
-  split(by = "dea_schedule") %T>% 
+nb_env %$% rm(list = ls(pattern = "^C"))
+
+get.smart("drugs")$
+  use(subset = (year(market_date) >= 2019) & !(cod_status %in% c(6:9, 11))) |>
+  define(
+    rel_key = paste0("mkt_dt_qtr_", quarter(market_date))
+    , modify_at(.SD, c("market_date", "termination_date"), \(x) as.Date(x, origin = origin)) 
+    , .SD[!duplicated(alt_ndc)] ~ drug_category + dea_schedule
+    ) |> 
+  split(by = c("drug_category", "dea_schedule")) %T>% 
   (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() %>% 
   rlang::set_names(names(.) |> stri_replace_first_fixed("NA", "C0")) |>
   list2env(envir = nb_env)
@@ -82,40 +100,111 @@ master_drug_data[year(market_date) >= 2020] |>
 Next, I created the event network, using `market_date` and `termination_date` to define and event duration.  The significance of using this pair of temporal markers is that they are used to create a directed graph using _from_ &Rarr; _to_ sequencing:
 
 ```{r EVENT_NETWORK}
-load_unloaded(event.vectors, furrr, tictoc)
+load_unloaded(event.vectors, furrr, tictoc, igraph)
 
 mdrp_events <- event.vectors$new()
 
 mdrp_events$configure(
   src.defs = paste("nb_env", ls("nb_env", pattern = "^[A-Z]"), sep = " %$% ") |> rlang::parse_exprs()
-  , contexts = ls("nb_env", pattern = "^[A-Z]")
+  , contexts = paste0("DrugCat: ", ls("nb_env", pattern = "^[A-Z]") |> stri_replace_first_fixed(".", " | Sched: "))
   , map.fields = {
       replicate(
         n = ls("nb_env", pattern = "^[A-Z]") |> uniqueN()
-        , expr = { c("drug_category", "market_date", "termination_date")}
+        , expr = { c("rel_key", "market_date", "termination_date")}
         , simplify = FALSE
-        )}
-  , chatty = TRUE
+        )
+      }
+  , chatty = !TRUE
   )
 
+tic(glue::glue("{Sys.time()} Creating the Event Vectors"))
 future_cluster <- makeClusterPSOCK(5)
 plan(tweak(cluster, workers = future_cluster))
 
-tic(glue::glue("{Sys.time()} Creating the Event Vectors"))
-mdrp_events$make.evs_universe(
-  mGap >= months(-6)
-  , mGap <= months(12)
-  # , time.control = list(months(0), months(6))
-  , graph.control = NULL
-  , unit = "month"
-  , furrr_opts = furrr::furrr_options(scheduling = Inf, seed = TRUE)
-  , graph.only = FALSE
-  , chatty = FALSE
-  )
+mdrp_events$
+  make.evs_universe(
+    mGap >= -30
+    , mGap <= 30
+    , mSt >= 90
+    , time.control = list(0, 181)
+    , unit = "days"
+    , furrr_opts = furrr::furrr_options(scheduling = Inf, seed = TRUE)
+    , graph.only = FALSE
+    , chatty = FALSE
+    )
 toc(log = TRUE)
 
-plan(sequential)
-parallel::stopCluster(future_cluster)
-rm(future_cluster)
-gc()
+suppressMessages({
+  plan(sequential)
+  if ("future_cluster" %in% ls()){ 
+    parallel::stopCluster(future_cluster)
+    rm(future_cluster)
+  }
+  invisible(gc())
+})
+```
+
+I then randomly selected an event network to visualize using [`visNetwork`](https://visjs.github.io/vis-network/docs/network/).  The output is located [here](viznetwork.html)
+
+```{r EVENT_NETWORK_VIZ, cache=FALSE}
+f2ab <- list(theta = 0.1, gravitationalConstant = -500, centralGravity = 0.0,  avoidOverlap = 1, damping = 0.7);
+gph <- mdrp_events$evt_graphs[sample(names(mdrp_events$evt_graphs), 1)]
+viz_file <- "./docs/viznetwork.html"
+
+gph_trace <- retrace.evs(event_graph = gph[[1]], evs = mdrp_events)
+
+ev_plot <- gph[[1]] |> (\(g){
+    .css <- "background-color:#444444; color:#DDDDDD; border-radius:10; font-weight:bold; "
+    
+    .table_plotly <- plotly::plot_ly()
+    
+    igraph::V(g)$trace <- gph_trace;
+    igraph::V(g)$title <- map(gph_trace, \(x){ 
+      sprintf("<b>Market Age</b>: %s days (%s)<h5>%s</h5>"
+              , x$on_market_age
+              , stri_extract_first_regex(x$on_market_age |> as.numeric(unit = "days") |> ddays(), "[~].+s")
+              , x$labeler_name
+              )
+    })
+    
+    igraph::E(g)$title <- igraph::edge.attributes(g) %$% {
+      src.pair |> 
+        stri_replace_all_regex("[:][0-9]+", "", vectorize_all = FALSE) |>
+        as.character() |>
+        stri_split_fixed(" -> ", simplify = TRUE) |> 
+        (\(x) list(src_from = x[, 1], src_to = x[, 2]))() |> 
+        list2env(envir = environment()) 
+      
+      .css <- "background-color:#444444; color:#DDDDDD; border-radius:10; font-weight:bold; width:20%; "
+      
+      sprintf(
+        paste(
+          "<p style=\"%s\"><b style=\"font-size:larger; \">%s (%s) </b>"
+          , "<u>From</u> {%s} <sup><%s></sup>"
+          , "<u>To</u> {%s} <sup><%s></sup></p>"
+          , sep = "<br><br>"
+          )
+        , .css, epsilon.desc, mGap, src_from, from.coord, src_to, to.coord
+        ) |>
+      # stri_replace_all_fixed("@", ", ", vectorize_all = FALSE) |>
+      map(\(x) HTML(x))
+    }
+      
+		igraph::V(g)$color <- igraph::V(g)$trace |> 
+		    map_dbl(\(x) x$market_date) |> 
+		    (\(x) x - min(x))() |>
+  		  ratio(type = "pareto", decimals = 6) |> 
+  		  rgb(red = 0.500000, blue = 0.500000)
+		
+		igraph::E(g)$smooth <- TRUE
+		
+		g
+	})() |>
+	visNetwork::visIgraph(physics = TRUE, type = "full") |>
+	visNetwork::visPhysics(solver = "forceAtlas2Based", timestep = 0.05) |>
+	visNetwork::visOptions(width = "1600", height = "1024") |>
+  visNetwork::visEdges(shadow = TRUE) %T>%
+  saveWidget(file = viz_file)
+
+# browseURL("docs/viznetwork.html")
 ```
