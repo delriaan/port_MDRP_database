@@ -1,19 +1,13 @@
-mdrp_crosstab <- replicate(n = 30, { 
-  replications(
-    formula = ~ cod_status*drug_category + cod_status*dea_schedule + drug_category:dea_schedule
-    , data = get.smart("drugs")$
-              use(identifier
-                  , retain = c(dea, drug_cat, cod_stat)
-                  , subset = runif(n = length(alt_ndc)) <= 0.25
-                  ) |> modify_at("cod_status", as.factor)
-    )
-  })
+.cache$set("nb_env", nb_env)
+book.of.workflow::save_image(!!!ls(), save.dir = "rdata", file.name = "workspace", use.prefix = FALSE, use.timestamp = FALSE)
+book.of.workflow::save_image(!!!ls(nb_env), save.dir = "rdata", file.name = "nb_env", use.prefix = FALSE, use.timestamp = FALSE, envir = nb_env)
 
-setattr(
-  mdrp_crosstab
-  , "interactions"
-  , apply(mdrp_crosstab
-      , MARGIN = 1
-      , FUN = \(k) reduce(k, rbind) |> apply(2, \(x) Rmisc::CI(x))
-      ) |> print()
-  )
+plot_ly(
+  x = degree(graph = gph, mode = "in") |> make.quantiles(as.factor = !FALSE, 0:5/5)
+  , y = page_rank(graph = gph)$vector |> ratio(type = "pareto", decimals = 4)
+  , type = "box"
+  ) |>
+  plotly::layout(
+    xaxis = list(title = "In-Degree Quantile")
+    , yaxis = list(title = "Cumulative Proportional Pagerank")
+    )

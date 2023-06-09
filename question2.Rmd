@@ -83,12 +83,15 @@ Also, I limited the data to market dates starting in 2019 and forced all values 
 nb_env %$% rm(list = ls(pattern = "^C"))
 
 get.smart("drugs")$
-  use(subset = (year(market_date) >= 2019) & !(cod_status %in% c(6:9, 11))) |>
+  use(retain = NULL, subset = !cod_status %in% c(6:9, 11)) |>
   define(
     rel_key = paste0("mkt_dt_qtr_", quarter(market_date))
     , modify_at(.SD, c("market_date", "termination_date"), \(x) as.Date(x, origin = origin)) 
     , .SD[!duplicated(alt_ndc)] ~ drug_category + dea_schedule
+    , ~rel_key + alt_ndc + fda_approval_date + market_date + termination_date + labeler_name 
+        + dea_schedule + drug_category + pharm_class + fda_product_name
     ) |> 
+  unique() |>
   split(by = c("drug_category", "dea_schedule")) %T>% 
   (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() %>% 
   rlang::set_names(names(.) |> stri_replace_first_fixed("NA", "C0")) |>
@@ -148,63 +151,68 @@ I then randomly selected an event network to visualize using [`visNetwork`](http
 
 ```{r EVENT_NETWORK_VIZ, cache=FALSE}
 f2ab <- list(theta = 0.1, gravitationalConstant = -500, centralGravity = 0.0,  avoidOverlap = 1, damping = 0.7);
-gph <- mdrp_events$evt_graphs[sample(names(mdrp_events$evt_graphs), 1)]
 viz_file <- "./docs/viznetwork.html"
-
-gph_trace <- retrace.evs(event_graph = gph[[1]], evs = mdrp_events)
-
-ev_plot <- gph[[1]] |> (\(g){
+if (!"ev_plot" %in% ls()){
+  ev_plot <- \(g){
     .css <- "background-color:#444444; color:#DDDDDD; border-radius:10; font-weight:bold; "
     
     .table_plotly <- plotly::plot_ly()
     
     igraph::V(g)$trace <- gph_trace;
-    igraph::V(g)$title <- map(gph_trace, \(x){ 
-      sprintf("<b>Market Age</b>: %s days (%s)<h5>%s</h5>"
-              , x$on_market_age
-              , stri_extract_first_regex(x$on_market_age |> as.numeric(unit = "days") |> ddays(), "[~].+s")
+    igraph::V(g)$title <- map(gph_trace, \(x){
+      sprintf("<b>%s</b><br><ul>%s</ul>"
               , x$labeler_name
+              , sprintf(
+                  "<li>%s</li>"
+                  , x[, sprintf(
+                          "%s days on market (%s)"
+                          , x$on_market_age
+                          , stri_extract_first_regex(x$on_market_age |> as.numeric(unit = "days") |> ddays(), "[~].+s")
+                          ) |> 
+                        c(alt_ndc, fda_product_name)
+                      ]
+                  ) |> paste(collapse = "")
               )
-    })
+      })
     
     igraph::E(g)$title <- igraph::edge.attributes(g) %$% {
       src.pair |> 
-        stri_replace_all_regex("[:][0-9]+", "", vectorize_all = FALSE) |>
-        as.character() |>
         stri_split_fixed(" -> ", simplify = TRUE) |> 
         (\(x) list(src_from = x[, 1], src_to = x[, 2]))() |> 
-        list2env(envir = environment()) 
+        list2env(envir = environment())
       
-      .css <- "background-color:#444444; color:#DDDDDD; border-radius:10; font-weight:bold; width:20%; "
-      
+      .css <- "background-color:#DDDDDDEE; border:solid 1px #CCCCCCEE; border-radius:10; font-weight:bold; width:120%; padding-top:10px; padding-bottom:10px; "
       sprintf(
-        paste(
-          "<p style=\"%s\"><b style=\"font-size:larger; \">%s (%s) </b>"
-          , "<u>From</u> {%s} <sup><%s></sup>"
-          , "<u>To</u> {%s} <sup><%s></sup></p>"
-          , sep = "<br><br>"
+        paste0(
+          "<p style=\"%s\"><b style=\"font-size:larger; \">&nbsp;&nbsp;%s <span style=\"font-family:Georgia\">(&epsilon; = %s)</span></b>"
+          , "<br><br>&nbsp;<u>From</u> {%s} <sup><%s></sup>"
+          , "<br><br>&nbsp;<u>To</u> {%s} <sup><%s></sup></p>"
+          , "</p>"
           )
-        , .css, epsilon.desc, mGap, src_from, from.coord, src_to, to.coord
-        ) |>
-      # stri_replace_all_fixed("@", ", ", vectorize_all = FALSE) |>
-      map(\(x) HTML(x))
+        , .css, epsilon.desc, round(epsilon, 4) |> as.character()
+          , src_from, from.coord
+          , src_to, to.coord
+          ) 
     }
       
-		igraph::V(g)$color <- igraph::V(g)$trace |> 
-		    map_dbl(\(x) x$market_date) |> 
-		    (\(x) x - min(x))() |>
+  	igraph::V(g)$color <- igraph::V(g)$trace |> 
+  	    map_dbl(\(x) x$market_date) |> 
+  	    (\(x) x - min(x))() |>
   		  ratio(type = "pareto", decimals = 6) |> 
   		  rgb(red = 0.500000, blue = 0.500000)
-		
-		igraph::E(g)$smooth <- TRUE
-		
-		g
-	})() |>
-	visNetwork::visIgraph(physics = TRUE, type = "full") |>
-	visNetwork::visPhysics(solver = "forceAtlas2Based", timestep = 0.05) |>
-	visNetwork::visOptions(width = "1600", height = "1024") |>
-  visNetwork::visEdges(shadow = TRUE) %T>%
-  saveWidget(file = viz_file)
+  	
+  	igraph::E(g)$smooth <- TRUE
+  	
+  	gph <<- g
+  	visNetwork::visIgraph(igraph = g, physics = TRUE, type = "full") |>
+  	visNetwork::visPhysics(solver = "forceAtlas2Based", timestep = 0.05) |>
+  	visNetwork::visOptions(width = "1154", height = "1024") |>
+    visNetwork::visEdges(shadow = TRUE) 
+  }
+}
+gph <- mdrp_events$evt_graphs[sample(names(mdrp_events$evt_graphs), 1)] |> first();
+gph_trace <- retrace.evs(event_graph = gph, evs = mdrp_events)
+gph |> ev_plot() |> saveWidget(file = viz_file)
 
 # browseURL("docs/viznetwork.html")
 ```
