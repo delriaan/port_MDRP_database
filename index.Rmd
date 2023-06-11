@@ -10,7 +10,7 @@ output:
     code_folding: hide
 params:
   data_dir: data
-  cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr')
+  cran_libs: !r c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr', "visNetwork", "igraph")
   git_libs: !r paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect', 'smart.data', 'event.vectors')
   refresh: !r FALSE
 ---

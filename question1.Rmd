@@ -56,7 +56,7 @@ if (!"smrt_drugs" %in% .cache$keys()){
 } else { 
   invisible(smart.data$new(as.data.table(x = 1), "none"))
   (\(x){
-    x$data <- .cache$get("drug_obs_data")
+    x$data <- .cache$get("drug_obs_data") |> unique()
     x$cache_mgr(action = upd)
     .cache$set("smrt_drugs", x);
   })(.cache$get("smrt_drugs"))
@@ -118,7 +118,7 @@ get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_
 
 ```{r METRICS_CORRELATION_II} 
 get.smart("drugs")$use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 
-  # View() 
+  unique() |>
   setkey(route, alt_ndc, days_market_absent, on_market_age) |>
   split_f(~route) |>
   map_dbl(\(x) x %$% suppressWarnings(cor(as.numeric(days_market_absent), as.numeric(on_market_age)))) |>
