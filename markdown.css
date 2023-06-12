@@ -4,27 +4,39 @@ body {font-size:12pt; }
 
 td > .container { width:400px; }
 
+#evs_params_table {
+  border: none;
+  margin-bottom: 10px; 
+  padding:10px 15px 10px 20px; 
+}
+
+.evs_params {
+  padding: 10px;
+}
+
 #req_libs_table {
   width:600px; 
-  border-spacing:10px; 
+  border-spacing:20px; 
+  border:none;
 }
 
 a[role="tab"].active {
   background-color:#DDD;
 }
 
-.req_libs {
+.req_libs,.evs_params {
+  border-radius: 15px; 
   text-align: center; 
   border-radius: 15px;
   border: none; 
 }
 
 .cran_libs{
-  background-color:#EEEEEE; 
+  background-color:#EEFFFE; 
 }
   
-.git_libs {
-  background-color:#AAAAAA; 
+.git_libs,.evs_params {
+  background-color:lightgray; 
   word-wrap: 
   break-word;
 }

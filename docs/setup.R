@@ -55,7 +55,7 @@ if (!"urls" %in% ls("nb_env")){
     )}, envir = as.environment("nb_env"));
 }
 
-# :: Functions
+# :: Functions & Active-Bindings
 split_f <- function(x, f, ...){
 #' Formula Split
 #' 
@@ -91,3 +91,23 @@ check_ndc_format <- \(lc, pc){
           )
   paste(lc, pc, sep = "-")
 }
+
+#
+if (!rlang::is_empty(find("read.dictionary"))){ 
+  rm(list = "read.dictionary", envir = as.environment("nb_env")) 
+}
+
+makeActiveBinding("read.dictionary", \(){
+  (get(".cache", envir = as.environment(find(".cache"))))$
+    get("api_dictionary") |> 
+    stri_replace_all_regex(
+        c("\t", "(((\n\n)?[A-UW-Z]([a-z]+)?[ ]?)+[:])", "\n")
+        , c("&nbsp;&nbsp;&nbsp;", "<br><span style='font-weight:bold; color:blue'>$0</span>", "<br>")
+        , vectorize_all = FALSE
+        ) |> 
+    paste(collapse = "") |> 
+    HTML() |> 
+    tags$p() |> 
+    html_print(viewer = NULL) |>
+    browseURL()
+}, env = as.environment("nb_env"))
