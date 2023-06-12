@@ -3,7 +3,7 @@ title: "Exploring the MDRP Database"
 output:
   html_notebook:
     css: markdown.css
-    code_folding: hide
+    code_folding: hide 
   html_document:
     df_print: paged
     css: markdown.css

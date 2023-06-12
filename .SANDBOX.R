@@ -6,4 +6,3 @@ logivec <- sample(c(T,F), 4*30, TRUE) |> matrix(ncol = 4)
 apply(logivec, 1, prod) |> mean()
 
  
-  

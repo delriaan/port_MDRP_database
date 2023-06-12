@@ -18,3 +18,5 @@ dir(pattern = "index.+Rmd$") |>
 #   to be served via github.io
 dir("docs", pattern = "nb.html", full.names = TRUE) %>%
   file.rename(to = stringi::stri_replace_first_fixed(., "nb.", ""))
+
+dir(pattern = "css|setup|viz.+html$") |> file.copy(to = "docs", overwrite = TRUE)
