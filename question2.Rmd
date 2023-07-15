@@ -53,7 +53,7 @@ Before investigation, I used a subset of the data conditioned on non-`NA` values
     ) |> summarytools::view(method = "browser", file = "docs/mdd_summary.html")
 ```
 
-After reviewing the [summary](docs/mdd_summary.html), I chose `dea_schedule` as the join and as the splitting factor used the first letter of values in `labeler_name` grouped into alphabetical sets of three or two.
+After reviewing the [summary](./mdd_summary.html), I chose `dea_schedule` as the join and as the splitting factor used the first letter of values in `labeler_name` grouped into alphabetical sets of three or two.
 
 ```{r PREP_DATA}
 # Split 'master_drug_data' and store in attached environment 'nb_env' ("notebook environment")

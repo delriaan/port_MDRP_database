@@ -3,7 +3,7 @@ dir(pattern = "index.+Rmd$") |>
   c(dir(pattern = "etl.+Rmd$")) |> 
   c(dir(pattern = "ques.+1.+Rmd$")) |> 
   c(dir(pattern = "ques.+2.+Rmd$")) |> 
-  # magrittr::extract(1) |> 
+  magrittr::extract(4) |>
   purrr::walk(\(x){ 
     rmarkdown::render(
       input = x
