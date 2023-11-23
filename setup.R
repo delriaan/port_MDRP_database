@@ -1,34 +1,32 @@
 options(future.globals.maxSize = 2 * 1024 * 10E6);
 
-if (!"book.of.workflow" %in% dir(sprintf("%s/library", R.home()))){
-  if (!"remotes" %in% dir(sprintf("%s/library", R.home()))){ 
-    htmltools::tags$span(style = "text-deoration:italic; color:#333333; ", "... installing missing package 'remotes'")
-    install.packages("remotes", repos = "https://cloud.r-project.org") 
-  }
-  
-  htmltools::tags$span(
-    style = "text-deoration:italic; color:#333333; "
-    , "... installing missing packages 'book.of.utilities', 'book.of.features', 'book.of.workflow', 'architect'"
-    );
-  
-  remotes::install_github("delriaan/book.of.utilities", subdir = "pkg")
-  remotes::install_github("delriaan/book.of.features", subdir = "pkg")
-  remotes::install_github("delriaan/book.of.workflow", subdir = "pkg")
-  remotes::install_github("delriaan/architect", subdir = "pkg")
-  remotes::install_github("delriaan/smart.data", subdir = "pkg")
-}
+params <- list(
+  data_dir = "data"
+  , cran_libs =  c('purrr', 'jsonlite', 'httr', 'summarytools', 'munsell', 'cachem', 'SmartEDA', 'htmltools', 'slider', 'stringi', 'magrittr', 'plotly', 'DT', 'data.table', 'pdftools', 'lubridate', 'future', 'furrr', 'future.callr', "visNetwork", "igraph")
+  , git_libs = paste0('book.of.', c('utilities', 'features', 'workflow')) |> c('architect', 'smart.data', 'event.vectors')
+  , refresh = FALSE
+  );
+
+c("book.of.utilities", "book.of.features", "book.of.workflow", "architect", "smart.data") |>
+  purrr::walk(\(i){ 
+    if (!require(i, character.only = TRUE)){
+      spsUtil::quiet(remotes::install_github(glue::glue("delriaan/{i}"), subdir = "pkg"))
+    }
+  });
 
 library(book.of.workflow)
 load_unloaded(!!!params$cran_libs, autoinstall = TRUE)
 load_unloaded(!!!params$git_libs)
 
+smart.start();
+
 if (!".cache" %in% ls()){ .cache <- cachem::cache_disk(dir = "r_session_cache") }
 
 #
-if (!"nb_env" %in% search()){ 
+spsUtil::quiet(if (!"nb_env" %in% search()){ 
   attach(rlang::env(), name = "nb_env")
   makeActiveBinding("nb_env", \() as.environment("nb_env"), env = as.environment("nb_env"))
-}
+})
 
 #
 if (!"urls" %in% ls("nb_env")){ 
@@ -111,3 +109,7 @@ makeActiveBinding("read.dictionary", \(){
     html_print(viewer = NULL) |>
     browseURL()
 }, env = as.environment("nb_env"))
+
+#
+Sys.getenv("GIT_REPOS") |> dir(pattern = "cache.+R$", full.names = TRUE, recursive = TRUE) |>
+  walk(source)

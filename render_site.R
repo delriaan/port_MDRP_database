@@ -1,22 +1,17 @@
+# Render Document ----
+
 # Cumbersome way to force execution order without renaming files just to order them
-dir(pattern = "index.+Rmd$") |> 
-  c(dir(pattern = "etl.+Rmd$")) |> 
-  c(dir(pattern = "ques.+1.+Rmd$")) |> 
-  c(dir(pattern = "ques.+2.+Rmd$")) |> 
-  magrittr::extract(4) |>
-  purrr::walk(\(x){ 
-    rmarkdown::render(
-      input = x
-      , output_format = "html_notebook"
-      , output_dir = "docs"
-      , knit_root_dir = "."
-      , run_pandoc = TRUE
-      )
-  })
-
-# Copy 'nb.html' files to the 'docs' directory which allows the site
-#   to be served via github.io
-dir("docs", pattern = "nb.html", full.names = TRUE) %>%
-  file.rename(to = stringi::stri_replace_first_fixed(., "nb.", ""))
-
-dir(pattern = "css|setup|viz.+html$") |> file.copy(to = "docs", overwrite = TRUE)
+if (interactive()){ 
+  dir(pattern = "index.+qmd$") |> 
+    c(dir(pattern = "etl.+qmd$")) |> 
+    c(dir(pattern = "ques.+1.+qmd$")) |> 
+    c(dir(pattern = "ques.+2.+qRmd$")) |> 
+    # magrittr::extract(4) |>
+    quarto::quarto_render(
+      execute_dir = getwd()
+      , as_job = TRUE
+      );
+  # Copy specified files to the target directory <..\delriaan.github.io\content\data_projects\mcd_mdrp_database>
+  output_dir <- "../delriaan.github.io/content/data_projects/mcd_mdrp_database";
+  dir(pattern = "css|setup|(viz|mdd).+html$") |> file.copy(to = output_dir, overwrite = TRUE)
+}

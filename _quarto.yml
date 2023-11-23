@@ -1,0 +1,43 @@
+project:
+  type: website
+  render: 
+    - index.qmd
+    - etl.qmd
+    - question1.qmd
+    - question2.qmd
+  output-dir: "../delriaan.github.io/content/data_projects/mcd_mdrp_database"
+  execute-dir: "file"
+
+website:
+  title: "Exploring the MDRP Database"
+  site-url: /
+  navbar: 
+    search: true
+    left: 
+      - text: "Home"
+        href: index.html
+      - text: "ETL"
+        href: etl.html
+      - text: "Question I"
+        href: question1.html
+      - text: "Question II"
+        href: question2.html
+
+date: 2023-11-18
+date-modified: last-modified
+author: "Chionesu George"
+
+format: 
+  html:
+    self-contained-math: true
+    self-contained: true
+    code-overflow: wrap
+    max-width: "1154px"
+    
+link-external-newwindow: true
+link-external-icon: true
+
+theme: 
+  light: sandstone
+  dark: slate
+  
