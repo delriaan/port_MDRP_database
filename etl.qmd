@@ -2,7 +2,6 @@
 title: "Data Retrieval"
 date: 2023-07-13
 date-modified: last-modified
-output: html_document
 ---
 
 ```{r}
@@ -166,16 +165,23 @@ The following shows proportional representation of NDC formats in the *OpenFDA* 
 ```{r}
 #| label: NDC_FORMATS
 #| echo: false
-list(
+#| warning: false
+#| message: false
+
+.tmp_obj <- { list(
   `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
       sort() |> 
       stri_split_fixed("-") |> 
       map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
       freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")))) 
-  , `MDRP: NDC Formats` = (api_data %>% 
+  , `MDRP: NDC Formats` = (copy(api_data) %>% 
         setnames(stri_replace_all_fixed(names(.) |> tolower(), " ", "_"))
-        )[, paste(stri_length(labeler_code), stri_length(product_code), sep = "-")] |>
-        freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))) |>
+        )[
+        , paste(stri_length(labeler_code), stri_length(product_code), sep = "-")
+        ] |>
+        freduce(
+          list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))
+          ) |>
         define(
           NDC.Format = ifelse(
             ratio(N, type = "pareto", decimals = 6) < 0.1
@@ -188,8 +194,9 @@ list(
               )
           , N = sum(N) ~ NDC.Format
           )
-  ) |> 
-imap(\(x, y){
+  )}
+
+.tmp_obj <- imap(.tmp_obj, \(x, y){
   plot_ly(  
     data = x
     , type = "pie"
@@ -203,19 +210,21 @@ imap(\(x, y){
     , textinfo='label+percent'
     , insidetextorientation='radial'
     ) |>
-    add_text(x = 0.5, y = 0.5
-             , xref = "paper", yref = "paper"
-             , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
-             , font = list(family = "Georgia", size = 22)) |>
+    add_text(
+      x = 0.5, y = 0.5
+      , xref = "paper", yref = "paper"
+      , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
+      , font = list(family = "Georgia", size = 22)
+      ) |>
     plotly::layout(
       xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
       , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
       ) |>
     plotly::config(displayModeBar= FALSE) |>
-    tags$td()
-}) |>
-tags$tr() |>
-tags$table()
+    tags$div(style = "display: inline-block; margin: 0px 0px 0px 0px;")
+  });
+
+map(.tmp_obj, print)
 ```
 
 The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, A function (`check_ndc_format()` &mdash; see `r htmltools::tags$a(href = ".\\setup.R", target="_blank", "setup.R")` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.

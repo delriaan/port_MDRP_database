@@ -23,16 +23,13 @@ website:
       - text: "Question II"
         href: question2.html
 
-date: 2023-11-18
-date-modified: last-modified
 author: "Chionesu George"
 
 format: 
   html:
-    self-contained-math: true
     self-contained: true
     code-overflow: wrap
-    max-width: "1154px"
+    page-layout: full
     
 link-external-newwindow: true
 link-external-icon: true
