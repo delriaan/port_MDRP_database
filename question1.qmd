@@ -50,16 +50,17 @@ I decided to start asking some questions of the data given the metrics defined e
 .tmp_obj <- get.smart("drugs")$
   use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 
   # View() 
+  unique() |>
   setkey(route, alt_ndc, days_to_market, on_market_age);
 
 # Create the first visualization focused on the correlation between days to market and on market age
-drug_metric_oma_viz <- plot_metric_cor(.tmp_obj, metric = on_market_age);
+drug_metric_oma_viz <- plot_metric_cor(data = .tmp_obj, metric = on_market_age, f = route);
 
 # Create the second visualization focused on the correlation between days to market and days market absent
-drug_metric_dma_viz <- plot_metric_cor(.tmp_obj, metric = days_market_absent);
+drug_metric_dma_viz <- plot_metric_cor(data = .tmp_obj, metric = days_market_absent, f = route);
 
 # Create the third visualization focused on the correlation between days to market and days market absent
-drug_metric_dma_oma_viz <- plot_metric_cor(.tmp_obj, metric = days_market_absent, primary_metric = on_market_age);
+drug_metric_dma_oma_viz <- plot_metric_cor(data = .tmp_obj, metric = days_market_absent, primary_metric = on_market_age, f = route);
 
 # Create the combined visualization
 drug_metric_viz <- subplot(

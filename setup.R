@@ -108,20 +108,20 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
   f <- rlang::ensym(f)
   metric <- rlang::enexpr(metric) |> as.character();
   primary_metric <- rlang::enexpr(primary_metric) |> as.character();
+  ndc_cts <- data[, .(ndc_cts = uniqueN(alt_ndc)), by = c(as.character(f))][, ndc_cts];
   
   # browser()
   rlang::expr(f_split(data, ~!!f)) |>
     eval() |>
-    purrr::map2_dbl(
-      list(primary_metric, metric)
-      , \(x, m) spsUtil::quiet(x %$% {
-          cor(as.numeric(get(m[[1]])), as.numeric(get(m[[2]])))
+    purrr::map_dbl(\(x) spsUtil::quiet(x %$% {
+          cor(as.numeric(get(primary_metric)), as.numeric(get(metric)))
         })
       ) |>
     modify_if(is.na, \(x) 0) %>%
     (\(cor_coeffs){
-      # Correlation Coefficients
+      # Correlation Coefficients and NDC Counts
       cor_coeffs <- cor_coeffs[order(cor_coeffs)];
+      ndc_cts <<- ndc_cts[order(cor_coeffs)];
       
       # Correlation Coefficient Vector Names
       nm <- names(cor_coeffs);
@@ -136,13 +136,14 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
       
       # Visualize the Correlation Coefficients
       plotly::plot_ly(
-        data = data.table(nm, zscore, cprop, cor_coeffs, key = "cor_coeffs")
+        data = data.table(nm, cor_coeffs, ndc_cts, zscore, cprop, key = "cor_coeffs")
         , y = ~nm
         , x = ~cor_coeffs
         , width = .wh_scale[1]
         , height = .wh_scale[2]
         , hoverinfo = "text"
-        , hovertext = ~sprintf(fmt ="<b>%s</b><br><b>Y:</b> %.2f%% of Total<br><b>Cor</b>(days_to_market, %s): %.2f<br><b>Z-score</b>(X): %.2f", nm, cprop * 100, metric, cor_coeffs, zscore)
+        , hovertext = ~sprintf(fmt ="<b>%s <sup>n = %s</sup></b><br><b>Cor</b>(%s, %s): %.2f"
+                               , nm, ndc_cts, primary_metric, metric, cor_coeffs)
         , name = metric
         , type = "bar"
         ) |>
@@ -158,7 +159,7 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
             )
           , xaxis = list(
               title = list(
-                text = glue::glue("Correlation Coefficient <br><sup>{metric}</sup>")
+                text = glue::glue("Correlation Coefficient <br><sup>{primary_metric} vs. {metric}</sup>")
                 , font = list(size = 16, family = "Georgia")
                 )
               , gridcolor = "#FFFFFF"
