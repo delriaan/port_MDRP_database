@@ -54,40 +54,28 @@ if (!"urls" %in% ls("nb_env")){
 }
 
 # :: Functions & Active-Bindings
-split_f <- function(x, f, ...){
-#' Formula Split
-#' 
-#' \code{split_f} is a wrapper base::split() and data.table:::split.data.table() that supports a formulaic definition of the splitting factors.
-#' 
-#' @param x See \code{?split}
-#' @param f See \code{?split}: may also be a right-hand sided formula (e.g., \code{~var1 + var2 + ...})
-#' 
-#' @return See \code{?split}
-#' 
-  if (is_formula(f)){ f <- terms(f, data = x) |> attr("term.labels") }
-  if (is.data.table(x)){ split(x, by = f, ...) } else { split(x, f = f, ...)}
-}
-
 #
 check_ndc_format <- \(lc, pc){
-#' Check and Conform NDC sequences
-#' 
-#' \code{check_ndc_format} checks labeler and product codes against a predefined, expected format and conforms the arguments accordingly.
-#' 
-#' @param lc,pc Labeler code and product code respectively (package size omitted)
-#' 
-#' @return A string in the format \code{labeler}-\code{product}
-#' 
-  pc <- modify_if(
-          pc, \(i) stri_length(i) < 3
-          , \(i) stri_pad_left(i, width = 3, pad = "0")
-          )
-  lc <- modify_if(
-          lc
-          , \(i) stri_length(i) < 4
-          , \(i) stri_pad_left(i, width = ifelse(stri_length(pc) == 3, 5, 4), pad = "0")
-          )
-  paste(lc, pc, sep = "-")
+  #' Check and Conform NDC sequences
+  #' 
+  #' \code{check_ndc_format} checks labeler and product codes against a predefined, expected format and conforms the arguments accordingly.
+  #' 
+  #' @param lc,pc Labeler code and product code respectively (package size omitted)
+  #' 
+  #' @return A string in the format \code{labeler}-\code{product}
+  #' 
+  pc <- purrr::modify_if(
+    pc, \(i) stringi::stri_length(i) < 3
+    , \(i) stringi::stri_pad_left(i, width = 3, pad = "0")
+  );
+  
+  lc <- purrr::modify_if(
+    lc
+    , \(i) stringi::stri_length(i) < 4
+    , \(i) stringi::stri_pad_left(i, width = ifelse(stringi::stri_length(pc) == 3, 5, 4), pad = "0")
+  );
+  
+  paste(lc, pc, sep = "-");
 }
 
 #
@@ -111,5 +99,72 @@ makeActiveBinding("read.dictionary", \(){
 }, env = as.environment("nb_env"))
 
 #
-Sys.getenv("GIT_REPOS") |> dir(pattern = "cache.+R$", full.names = TRUE, recursive = TRUE) |>
-  walk(source)
+Sys.getenv("GIT_REPOS") |> dir(pattern = "(cache|split).+R$", full.names = TRUE, recursive = TRUE) |>
+  walk(source);
+
+split_f <- f_split;
+
+plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f = "route"){
+  f <- rlang::ensym(f)
+  metric <- rlang::enexpr(metric) |> as.character();
+  primary_metric <- rlang::enexpr(primary_metric) |> as.character();
+  
+  # browser()
+  rlang::expr(f_split(data, ~!!f)) |>
+    eval() |>
+    purrr::map2_dbl(
+      list(primary_metric, metric)
+      , \(x, m) spsUtil::quiet(x %$% {
+          cor(as.numeric(get(m[[1]])), as.numeric(get(m[[2]])))
+        })
+      ) |>
+    modify_if(is.na, \(x) 0) %>%
+    (\(cor_coeffs){
+      # Correlation Coefficients
+      cor_coeffs <- cor_coeffs[order(cor_coeffs)];
+      
+      # Correlation Coefficient Vector Names
+      nm <- names(cor_coeffs);
+      
+      # Z-score of Correlation Coefficients
+      zscore <- book.of.utilities::calc.zero_mean(cor_coeffs, as.zscore = TRUE, use.population = TRUE);
+      
+      # Cumulative Proportion of Correlation Coefficients
+      cprop <- book.of.utilities::ratio(cor_coeffs + abs(min(cor_coeffs)), type="pareto", decimals = 6);
+      
+      .wh_scale <- 800 * c(1.25, 1)
+      
+      # Visualize the Correlation Coefficients
+      plotly::plot_ly(
+        data = data.table(nm, zscore, cprop, cor_coeffs, key = "cor_coeffs")
+        , y = ~nm
+        , x = ~cor_coeffs
+        , width = .wh_scale[1]
+        , height = .wh_scale[2]
+        , hoverinfo = "text"
+        , hovertext = ~sprintf(fmt ="<b>%s</b><br><b>Y:</b> %.2f%% of Total<br><b>Cor</b>(days_to_market, %s): %.2f<br><b>Z-score</b>(X): %.2f", nm, cprop * 100, metric, cor_coeffs, zscore)
+        , name = metric
+        , type = "bar"
+        ) |>
+        plotly::hide_legend() |>
+        plotly::config(mathjax = "cdn", displayModeBar = FALSE) |>
+        plotly::layout(
+          yaxis = list(
+            title = list(
+              text = "Route"
+              , font = list(size = 16, family = "Georgia")
+              )
+            , gridcolor = "#FFFFFF"
+            )
+          , xaxis = list(
+              title = list(
+                text = glue::glue("Correlation Coefficient <br><sup>{metric}</sup>")
+                , font = list(size = 16, family = "Georgia")
+                )
+              , gridcolor = "#FFFFFF"
+              , side = "top"
+              )
+          , plot_bgcolor = rgb(.8,.8,.8)
+          )
+    })();
+}

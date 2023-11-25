@@ -1,10 +1,11 @@
+author: "Chionesu George"
 project:
   type: website
   render: 
-    - index.qmd
-    - etl.qmd
+    # - index.qmd
+    # - etl.qmd
     - question1.qmd
-    - question2.qmd
+    # - question2.qmd
   output-dir: "../delriaan.github.io/content/data_projects/mcd_mdrp_database"
   execute-dir: "file"
 
@@ -23,18 +24,21 @@ website:
       - text: "Question II"
         href: question2.html
 
-author: "Chionesu George"
-
 format: 
   html:
-    self-contained: true
+    # self-contained: true
     code-overflow: wrap
     page-layout: full
-    
-link-external-newwindow: true
-link-external-icon: true
+    code-fold: true
+    link-external-icon: true
+    link-external-newwindow: true
+    theme:
+      light: flatly
+      dark: slate
 
-theme: 
-  light: sandstone
-  dark: slate
-  
+tags:
+  - R
+  - MDRP
+  - Medicaid
+  - Prescription
+  - Drug

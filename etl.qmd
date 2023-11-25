@@ -12,24 +12,20 @@ date-modified: last-modified
 
 knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
 source("setup.R");
+
+# tags$script(
+#   type="text/javascript"
+#   , src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"
+#   );
 ```
-
-```{=js}
-<script type="text/javascript" async
-  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-</script>
-```
-
-
-## Data Wrangling 
 
 :::{.panel-tabset}
 
-### Retrieve and Prepare Data
+## 1. Retrieve and Prepare Data
 
 The data were retrieved via R package [httr](https://httr.r-lib.org) with some initial conversion to [data.table](https://rdatatable.gitlab.io/data.table/) objects.  Core objects were cached to disk ([cachem](https://cachem.r-lib.org)) for easy retrieval after the initial pull.
 
-#### Data Sets
+### Data Sets
 
 ```{r}
 #| label: RETRIEVE_DATA_MDRP
@@ -53,7 +49,7 @@ if (!"global_api_data" %in% .cache$keys()){
 }
 
 if (!"api_data" %in% ls()){ 
-  cache_load(.cache, "global_api_data")
+  cache_load(.cache, "api_data")
 }
 
 ```
@@ -122,7 +118,7 @@ if (!"global_api_dictionary" %in% .cache$keys()){
   cache_prep(api_data) |> cache_save(.cache);
   cache_prep(api_dictionary) |> cache_save(.cache)
 } else {
-  cache_load(.cache, "global_api_dictionary");
+  cache_load(.cache, "api_dictionary");
 }
 ```
 
@@ -151,12 +147,12 @@ if (!"global_openfda_ndc" %in% .cache$keys()){
 }
 
 if (!"openFDA_ndc" %in% ls()){ 
-  cache_load(.cache, "global_openfda_ndc");
+  cache_load(.cache, "openfda_ndc");
 }
 
 ```
 
-#### NDC Format Inspection
+## 2. NDC Format Inspection
 
 NDC sequences come in a various formats, usually a `4-4-x`, `5-4-x`, or `5-3-x` sequence (each integer indicating string length). Sometimes other formats arise, so normalizing all NDC sequences is a good idea, especially when there is a desire (or need) to join different data containing intersecting NDCs.
 
@@ -167,76 +163,111 @@ The following shows proportional representation of NDC formats in the *OpenFDA* 
 #| echo: false
 #| warning: false
 #| message: false
+#| cache: true
+#| cache-rebuild: false
 
-.tmp_obj <- { list(
-  `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
-      sort() |> 
-      stri_split_fixed("-") |> 
-      map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
-      freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")))) 
-  , `MDRP: NDC Formats` = (copy(api_data) %>% 
-        setnames(stri_replace_all_fixed(names(.) |> tolower(), " ", "_"))
-        )[
-        , paste(stri_length(labeler_code), stri_length(product_code), sep = "-")
-        ] |>
-        freduce(
-          list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))
-          ) |>
-        define(
-          NDC.Format = ifelse(
-            ratio(N, type = "pareto", decimals = 6) < 0.1
-              , "Other<br><sup>%s formats</sup>"
-              , NDC.Format
-              ) %>%
-            modify_at(
-              .at = which(grepl("Other", .))
-              , .f = \(x) sprintf(x, sum(grepl("Other", .)))
-              )
-          , N = sum(N) ~ NDC.Format
-          )
-  )}
+if (!all(c("openfda_ndc_formats", "mdrp_ndc_formats") %in% ls())){
+  .tmp_obj <- { list(
+    `OpenFDA: NDC Formats` = openFDA_ndc[, unique(product_ndc)] |> 
+        sort() |> 
+        stri_split_fixed("-") |> 
+        map_chr(\(x) stri_length(x) |> paste(collapse = "-")) |> 
+        freduce(list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")))) 
+    , `MDRP: NDC Formats` = (copy(api_data) %>% 
+          setnames(stri_replace_all_fixed(names(.) |> tolower(), " ", "_"))
+          )[
+          , paste(stri_length(labeler_code), stri_length(product_code), sep = "-")
+          ] |>
+          freduce(
+            list(sort, table, as.data.table, \(x) setnames(x, c("NDC.Format", "N")) |> setkey(N))
+            ) |>
+          define(
+            NDC.Format = ifelse(
+              ratio(N, type = "pareto", decimals = 6) < 0.1
+                , "Other<br><sup>%s formats</sup>"
+                , NDC.Format
+                ) %>%
+              modify_at(
+                .at = which(grepl("Other", .))
+                , .f = \(x) sprintf(x, sum(grepl("Other", .)))
+                )
+            , N = sum(N) ~ NDC.Format
+            )
+    )}
 
-.tmp_obj <- imap(.tmp_obj, \(x, y){
-  plot_ly(  
-    data = x
-    , type = "pie"
-    , labels = ~NDC.Format
-    , values = ~N
-    , hole = 0.6
-    , width = 500
-    , height = 450
-    , rotation = ifelse(grepl("MDRP", y), 33, 0)
-    , name = NULL
-    , textinfo='label+percent'
-    , insidetextorientation='radial'
-    ) |>
-    add_text(
-      x = 0.5, y = 0.5
-      , xref = "paper", yref = "paper"
-      , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
-      , font = list(family = "Georgia", size = 22)
+  spsUtil::quiet(imap(.tmp_obj, \(x, y){
+    plot_ly(  
+      data = x
+      , type = "pie"
+      , labels = ~NDC.Format
+      , values = ~N
+      , hole = 0.6
+      , width = 500
+      , height = 450
+      , rotation = ifelse(grepl("MDRP", y), 33, 0)
+      , name = NULL
+      , textinfo='label+percent'
+      , insidetextorientation='radial'
       ) |>
-    plotly::layout(
-      xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
-      , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
-      ) |>
-    plotly::config(displayModeBar= FALSE) |>
-    tags$div(style = "display: inline-block; margin: 0px 0px 0px 0px;")
-  });
+      add_text(
+        x = 0.5, y = 0.5
+        , xref = "paper", yref = "paper"
+        , text = ifelse(grepl("MDRP", y), "MDRP", "OpenFDA")
+        , font = list(family = "Georgia", size = 22)
+        ) |>
+      plotly::layout(
+        xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
+        , yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE)
+        ) |>
+      plotly::config(displayModeBar= FALSE)
+    }) |>
+    rlang::set_names(c("openfda_ndc_formats", "mdrp_ndc_formats") |> paste0("_viz")) |>
+    list2env(envir = environment()))
+  
+  cache_prep(openfda_ndc_formats_viz) |> cache_save(.cache)
+  cache_prep(mdrp_ndc_formats_viz) |> cache_save(.cache)
+}
 
-map(.tmp_obj, print)
+tagList(
+  tags$span(style="display:inline-block; z-index:3;", .cache$get("global_openfda_ndc_formats_viz"))
+  , tags$span(style="display:inline-block; z-index:3", .cache$get("global_mdrp_ndc_formats_viz"))
+  )
 ```
 
-The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, A function (`check_ndc_format()` &mdash; see `r htmltools::tags$a(href = ".\\setup.R", target="_blank", "setup.R")` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process.
+[The MDRP has many more NDC sequences due to truncation of leading zeroes. Fortunately, an NDC sequence is a collection of code segments (present in the data) concatenated with a hyphen. Knowing this, function `check_ndc_format()` was created in order to derive conformed NDC segment sequences (using labeler and product codes) based on the OpenFDA sequences, allowing the MDRP and OpenFDA data to be joined later in the process:]{style="display:block; margin-top:-20px;"}
+
+```{r}
+#| label: check_ndc_format
+#| code-summary: check_ndc_format()
+
+check_ndc_format <- \(lc, pc){
+# Check and Conform NDC sequences
+# 
+# `check_ndc_format` checks labeler and product codes against a predefined, expected format and conforms the arguments accordingly. The function returns string in the format `labeler-product`.
+# 
+# `lc` and `pc` are the labeler code and product code respectively (package size omitted)
+ 
+  pc <- purrr::modify_if(
+          pc, \(i) stringi::stri_length(i) < 3
+          , \(i) stringi::stri_pad_left(i, width = 3, pad = "0")
+          );
+  
+  lc <- purrr::modify_if(
+          lc
+          , \(i) stringi::stri_length(i) < 4
+          , \(i) stringi::stri_pad_left(i, width = ifelse(stringi::stri_length(pc) == 3, 5, 4), pad = "0")
+          );
+  
+  paste(lc, pc, sep = "-");
+}
+```
 
 
-:::
-
-## Master Drug Data 
-
-:::{.panel-tabset}
+## 3. Prepare Master Dataset
 
 The OpenFDA and MDRP data were joined using the conformed NDC sequence in the previous subsection to create `master_drug_data` (**Note**: due to the size of the data, the join operation takes some time which is why the result is disk-cached for later retrieval. This caching approach is used for data retrieved or created during the data wrangling phase):
+
+:::{.panel-tabset}
 
 ```{r}
 #| label: MASTER_DRUG_DATA
@@ -454,50 +485,61 @@ if (params$refresh || !"global_drug_obs_data" %in% .cache$keys()){
 }
 
 if (!"drug_obs_data" %in% ls()){ 
-  cache_load(.cache, "global_drug_obs_data");
+  cache_load(.cache, "drug_obs_data");
 }
 
-.plot <- plot_ly(width = 960, height = 700);
+if (params$refresh || !"global_drug_metrics_viz" %in% .cache$keys()){
+  drug_metrics_viz <- plot_ly(width = 960, height = 700);
+  
+  spsUtil::quiet(
+    drug_obs_data[, .(route, days_to_market, on_market_age, days_market_absent)] |> 
+    # dplyr::slice_sample(prop = 0.1) |>
+    melt(id.vars = "route", variable.name = "Metric") |> 
+    setorder(route, Metric, value) |>
+    split(by = "route") |>
+    iwalk(\(x, y){
+      x <- define(x
+            , map(.SD, \(i) calc.rms(as.numeric(i) |> modify_if(is.na, \(i) 0)) |> as.difftime(units = "days")) ~Metric
+            );
+      drug_metrics_viz <<- { add_trace(
+          p = drug_metrics_viz
+          , type = 'scatterpolar'
+          , fill = 'toself'
+          , r = ifelse(x$value == 0, 0, log(as.numeric(x$value), base = 30))
+          , theta = x$Metric
+          , hoverinfo = "text"
+          , hovertext = sprintf(
+                "<b>%s</b><br>%.2f %s"
+                , y
+                , ifelse(x$value > 365, x$value/365, x$value)
+                , ifelse(x$value > 365, "Years", "Days")
+                )
+          , name = y
+          , mode = "markers"
+          )}
+    }));
+  
+  drug_metrics_viz <- drug_metrics_viz |>
+    config(mathjax = "cdn") |>
+    layout(
+      title = list(
+          text = HTML("Metrics Radar by Route of Administration (Log<sub>30</sub> Days)<br><span style='font-size:smaller; '>(Double- or single-click legend items)")
+          , legend = list(font = list(size = 10))
+          , font = list(family = "Georgia")
+          )
+      , margin = list(t = -0.5) 
+      );
+  
+  cache_prep(drug_metrics_viz) |> cache_save(.cache);
+}
 
-spsUtil::quiet(
-  drug_obs_data[, .(route, days_to_market, on_market_age, days_market_absent)] |> 
-  # dplyr::slice_sample(prop = 0.1) |>
-  melt(id.vars = "route", variable.name = "Metric") |> 
-  setorder(route, Metric, value) |>
-  split(by = "route") |>
-  iwalk(\(x, y){
-    x <- define(x
-          , map(.SD, \(i) calc.rms(as.numeric(i) |> modify_if(is.na, \(i) 0)) |> as.difftime(units = "days")) ~Metric
-          );
-    .plot <<- { add_trace(
-        p = .plot
-        , type = 'scatterpolar'
-        , fill = 'toself'
-        , r = ifelse(x$value == 0, 0, log(as.numeric(x$value), base = 30))
-        , theta = x$Metric
-        , hoverinfo = "text"
-        , hovertext = sprintf(
-              "<b>%s</b><br>%.2f %s"
-              , y
-              , ifelse(x$value > 365, x$value/365, x$value)
-              , ifelse(x$value > 365, "Years", "Days")
-              )
-        , name = y
-        , mode = "markers"
-        )}
-  }));
+if (!"drug_metrics_viz" %in% ls()){ 
+  cache_load(.cache, "drug_metrics_viz");
+}
 
-.plot |>
-  config(mathjax = "cdn") |>
-  layout(
-    title = list(
-        text = HTML("Metrics Radar by Route of Administration (Log<sub>30</sub> Days)<br><span style='font-size:smaller; '>(Double- or single-click legend items)")
-        , legend = list(font = list(size = 10))
-        , font = list(family = "Georgia")
-        )
-    , margin = list(t = -0.5) 
-    ) |>
-  tags$p()
+tags$span(style="display:inline-block; z-index:3;", drug_metrics_viz) |> tagList()
 ```
+
+:::
 
 :::

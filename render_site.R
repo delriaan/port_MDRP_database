@@ -6,12 +6,9 @@ if (interactive()){
     c(dir(pattern = "etl.+qmd$")) |> 
     c(dir(pattern = "ques.+1.+qmd$")) |> 
     c(dir(pattern = "ques.+2.+qRmd$")) |> 
-    # magrittr::extract(4) |>
+    magrittr::extract(3) |>
     quarto::quarto_render(
       execute_dir = getwd()
       , as_job = TRUE
       );
-  # Copy specified files to the target directory <..\delriaan.github.io\content\data_projects\mcd_mdrp_database>
-  output_dir <- "../delriaan.github.io/content/data_projects/mcd_mdrp_database";
-  dir(pattern = "css|setup|(viz|mdd).+html$") |> file.copy(to = output_dir, overwrite = TRUE)
 }

@@ -17,12 +17,6 @@ if ("global_drug_obs_smart_data" %in% .cache$keys()){
   cache_load(.cache, "global_drug_obs_smart_data");
   drug_obs_smart_data$cache_mgr(action = upd);
 }
-
-tags$script(
-  type="text/javascript"
-  , src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"
-  )
-
 ```
 
 :::{.panel-tabset}
@@ -96,7 +90,8 @@ define(
   split(by = "split_factor") %T>% 
   # split(by = "dea_schedule") %T>% 
   (\(x) cat(sprintf("Created %s objects", length(x)), sep = "\n"))() |> 
-  list2env(envir = nb_env)
+  list2env(envir = nb_env) |>
+  invisible()
 ```
 
 ## Sidebar 
@@ -246,11 +241,13 @@ suppressMessages({
 });
 ```
 
-After generating the universe of events I explored the graphs using [`visNetwork`](https://visjs.github.io/vis-network/docs/network/). Only one graph was interesting enough to retain which can be viewed [here](./viznetwork_C0.html).
+After generating the universe of events I explored the graphs using [`visNetwork`](https://visjs.github.io/vis-network/docs/network/). Only one graph was interesting enough to retain which can be viewed [here](./viznetwork_C0.html){target="_blank")}.
 
 ```{r}
 #| label: EVENT_NETWORK_VIZ
 #| cache: true
+#| cache-rebuild: true
+#| code-fold: true
 f2ab <- list(
   theta = 0.1
   , gravitationalConstant = -500
@@ -376,7 +373,7 @@ mdrp_events$evt_graphs |>
 
 ```
 
-From here, one could conduct some graph analysis or graph-based predictive modeling, but for now, I will close this exploratory exercise.  I hope you have found something interesting about the methods employed, packages used, and results.  If you would like to follow up with me, I can be reached via [LinkedIn](https://www.linkedin.com/in/chionesu-george-1067b122/).
+From here, one could conduct some graph analysis or graph-based predictive modeling, but for now, I will close this exploratory exercise. I hope you have found something interesting about the methods employed, packages used, and results. If you would like to follow up with me, I can be reached via [LinkedIn](https://www.linkedin.com/in/chionesu-george-1067b122/).
 
 &mdash; Thank you!
 

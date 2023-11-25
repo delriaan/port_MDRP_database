@@ -2,8 +2,6 @@
 title: "Exploring the MDRP Database"
 date: 2023-07-13
 date-modified: last-modified
-editor_options: 
-  chunk_output_type: console
 ---
 
 ```{r}
@@ -14,12 +12,11 @@ editor_options:
 
 knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
 source("setup.R");
-```
 
-```{=js}
-<script type="text/javascript" async
-  src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML">
-</script>
+# tags$script(
+#   type="text/javascript"
+#   , src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"
+#   );
 ```
 # Introduction
 
@@ -30,8 +27,6 @@ This project explores the Medicaid Drug Rebate Program (MDRP) database.  Data is
 #| echo: false
 urls$data
 ```
-
-All files for this project are hosted on [GitHub](https://github.com/delriaan/port_MDRP_database)
 
 <hr>
 
