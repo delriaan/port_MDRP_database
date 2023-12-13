@@ -28,6 +28,8 @@ This project explores the Medicaid Drug Rebate Program (MDRP) database.  Data is
 urls$data
 ```
 
+Additional information about the MDRP is available [here](https://www.kff.org/medicaid/issue-brief/understanding-the-medicaid-prescription-drug-rebate-program/).
+
 <hr>
 
 ## Required LIbraries
@@ -56,5 +58,3 @@ tags$table(
       )
   ) |> tags$p()
 ```
-
-

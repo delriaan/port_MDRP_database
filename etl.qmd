@@ -12,11 +12,6 @@ date-modified: last-modified
 
 knitr::opts_chunk$set(opts_chunk = list(cache=TRUE, cache.lazy=TRUE, warning=FALSE, message=FALSE))
 source("setup.R");
-
-# tags$script(
-#   type="text/javascript"
-#   , src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"
-#   );
 ```
 
 :::{.panel-tabset}
@@ -80,6 +75,7 @@ if (!"global_api_dictionary" %in% .cache$keys()){
                   , "FDA Application Number"
                   , "FDA Therapeutic Equivalence Code"
                   );
+    
     .replacement <- c("Package"
                   , "Intro.+Date"
                   , "Covered Outpatient Drug [(]COD[)] Status"
@@ -320,8 +316,7 @@ if (!"master_drug_data" %in% ls()){
     );
 
 append(list(`Metric Name` = "Description"), .ndc_events_meta) |> 
-  imap(\(x, y) 
-    if (grepl("Metric", y)){ 
+  imap(\(x, y) if (grepl("Metric", y)){ 
       tags$tr(
         tags$th(style = "background-color: #EEEEEE; padding:2px; ", y)
         , tags$th(style = "background-color: #EEEEEE; padding-left: 5px; ", x)
@@ -331,8 +326,7 @@ append(list(`Metric Name` = "Description"), .ndc_events_meta) |>
         tags$td(style = "font-weight:bold; padding:2px; text-align:right; ", y)
         , tags$td(style = "padding-left: 5px; ", x)
         )
-      }
-    ) |> 
+      }) |> 
   tags$table() |>
   tags$p()
 ```
@@ -373,71 +367,55 @@ Some of the values in columns `termination_date` and `reactivation_date` are `NA
 The resulting object was captured in `ndc_events_clean`:
 
 ```{r}
-#| label: DRUG_EVENTS_MAKE
-ndc_events_clean <- { 
-  define(
-    ndc_events
-    , modify_at(
-        .SD, "termination_date"
-        , \(x) ifelse(is.na(x), today() + weeks(24), ifelse(today() < x, today() + weeks(24), x))
-        )
-    , modify_at(
-        .SD, "reactivation_date"
-        , \(x) ifelse(is.na(x), termination_date, ifelse(x > today(), today() + weeks(24), x))
-        )
-    , cbind(
-        .SD
-        , define({
-            .SD[, fda_approval_date:reactivation_date][, map(.SD, as.numeric)] |> 
-              # dplyr::slice_sample(prop = 0.4) |>
-              apply(1, \(x){
-                c(x, diff(x) |> modify_if(is.na, \(i) 0) |> sign() %>% .[-1]) |> 
-                  as.list() |>
-                  modify_at(c(5, 6), \(i) i == 1) %>% 
-                  rlang::set_names(names(.)[c(1:4)], paste0(names(.)[c(5, 6)], ".bool"))
-                }, simplify = FALSE) |>
-              rbindlist()
-            }
-          , days_to_market = market_date - fda_approval_date
-          , on_market_age = 
-              apply(.SD[, .(termination_date.bool, reactivation_date.bool, termination_date)]
-                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], today(), i[[3]]), today()) 
-                    }) -
-              apply(.SD[, .(termination_date.bool, reactivation_date.bool
-                            , market_date, reactivation_date)]
-                    , 1, function(i){ ifelse(i[[1]], ifelse(i[[2]], i[[4]], i[[3]]), i[[3]]) 
-                    })
-          , days_market_absent = 
-                apply(.SD[, .(reactivation_date.bool, reactivation_date)]
-                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) 
-                    }) -
-                apply(.SD[, .(termination_date.bool, termination_date)]
-                    , 1, function(i){ ifelse(i[[1]], i[[2]], today()) 
-                    })
-          , ~days_to_market + on_market_age + days_market_absent
+#| label: CLEAN_NDC_DRUG_EVENTS
+
+today <- if (params$refresh){ today() } else { as.Date("2023-07-13")}
+
+if (params$refresh || !"global_ndc_events_clean" %in% .cache$keys()){ 
+  ndc_events_clean <- {
+    define(
+      copy(ndc_events)
+      , days_to_market = market_date - fda_approval_date
+      , on_market_age = modify_if(termination_date, is.na, \(i) today) - market_date
+      , days_market_absent = modify_if(reactivation_date, is.na, \(i) today) - 
+          modify_if(termination_date, is.na, \(i) today)
+      , days_market_absent = ifelse(is.na(termination_date), 0, days_market_absent)
+      , filter(.SD, on_market_age >= 0, days_to_market >= 0)
+      , modify_at(
+          .SD
+          , c("termination_date", "reactivation_date")
+          , \(x) modify_if(x, is.na, \(i) as.Date(0, origin = "1970-01-01"))
           )
       )
-    , modify_at(.SD, c("termination_date", "reactivation_date"), \(x) as.Date(x, origin = "1970-01-01"))
-  )}
+    }
+  
+  cache_prep(ndc_events_clean) |> cache_save(.cache);
+}
+
+if (!"ndc_events_clean" %in% ls()){ 
+  cache_load(.cache, "global_ndc_events_clean");
+}
 
 #
 (\(x, i, by){
   i <- define(x[i, on = by, allow.cartesian = TRUE]);
+  
   imap(.ndc_events_meta, \(x, y){
     rlang::inject(descr(
       x = modify_at(i, y, \(j) as.numeric(j, units = "days"))
       , var = !!rlang::sym(y)
       , transpose = !TRUE
       )) |> 
-      view(method = "render", table.classes = 'multi_stat', custom.css = "markdown.css") |>
+      summarytools::view(method = "render", table.classes = 'multi_stat', custom.css = "markdown.css") |>
       tags$td()
     });
   })(master_drug_data
      , ndc_events_clean
      , { c("alt_ndc", "fda_application_number"
-       , "market_date", "termination_date"
-       , "reactivation_date", "fda_approval_date"
-       )}) |>
+         , "market_date", "termination_date"
+         , "reactivation_date", "fda_approval_date"
+         )
+       }) |>
   tags$tr() |>
   tags$table()
 ```

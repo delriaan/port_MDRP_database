@@ -2,7 +2,7 @@ author: "Chionesu George"
 project:
   type: website
   render: 
-    # - index.qmd
+    - index.qmd
     # - etl.qmd
     - question1.qmd
     # - question2.qmd

@@ -21,7 +21,7 @@ if ("global_drug_obs_smart_data" %in% .cache$keys()){
   
   drug_obs_smart_data <- smart.data$
     new(x = drug_obs_data, name = "drugs")$
-    taxonomy.rule(!!!drug_taxonomy)$
+    taxonomy.rule(!!!(drug_taxonomy %$% mget(ls())))$
     enforce.rules(for_usage)$
     cache_mgr(action = upd) |>
     invisible();
@@ -38,9 +38,7 @@ if ("global_drug_taxonomy" %in% .cache$keys()){
 
 ```
 
-I decided to start asking some questions of the data given the metrics defined earlier.  I decided to look into the correlation between pairs of metrics relative to a third:
-
-"How does the correlation between `days_to_market` and `on_market_age`|`days_market_absent` change by route of administration?":
+At this stage, as this is an exploratory exercise, I sought to answer the question, "Is there a relationship between [`on_market_age`]{title="Days active on market"}, [`days_to_market`]{title="Days between FDA approval and going live on market"}, and [`route`]{title="Administration route"}:
 
 ```{r}
 #| label: METRICS_CORRELATION
@@ -51,6 +49,7 @@ I decided to start asking some questions of the data given the metrics defined e
   use(identifier, metrics, retain = c(route), subset = days_to_market >= 0) |> 
   # View() 
   unique() |>
+  modify_at("route", factor) |>
   setkey(route, alt_ndc, days_to_market, on_market_age);
 
 # Create the first visualization focused on the correlation between days to market and on market age
@@ -81,7 +80,25 @@ cache_prep(drug_metric_dma_oma_viz) |> cache_save(.cache);
 cache_prep(drug_metric_viz) |> cache_save(.cache);
 
 # Render the combined visualization
-.cache$get("global_drug_metric_viz") |> tagList()
-```
+# .cache$get("global_drug_metric_viz") |> tagList();
 
-[Market age relative to days to market shows more variability in correlation distribution. This is not to make an claim of statistically significant differentiation; however, it may be worth exploring whether or not there are clusters of administration routes based on event correlation. A future update may address this, but this is as deep of exploration I'll go for now.]{style="display:block; margin-top:1.1em;"}
+(\(.obj){
+  fml <- on_market_age ~ days_to_market*route;
+  
+  mdl <- lm(
+    formula = fml
+    , data = modify_at(.obj, c("on_market_age", "days_to_market"), as.numeric)
+    );
+  
+  mdl.summary <- mdl |> summary() |> 
+    broom::tidy() |> 
+    filter(p.value <= 0.1) |>
+    modify_at("p.value", \(i) round(i, 4));
+  
+  mdl.aov <- aov(mdl);
+  
+  rm(mdl); 
+  
+  mget(ls(sorted = FALSE));
+})(.tmp_obj)
+```

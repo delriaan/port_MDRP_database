@@ -114,9 +114,8 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
   rlang::expr(f_split(data, ~!!f)) |>
     eval() |>
     purrr::map_dbl(\(x) spsUtil::quiet(x %$% {
-          cor(as.numeric(get(primary_metric)), as.numeric(get(metric)))
-        })
-      ) |>
+        cor(as.numeric(get(primary_metric)), as.numeric(get(metric)))
+      })) |>
     modify_if(is.na, \(x) 0) %>%
     (\(cor_coeffs){
       # Correlation Coefficients and NDC Counts
@@ -132,7 +131,7 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
       # Cumulative Proportion of Correlation Coefficients
       cprop <- book.of.utilities::ratio(cor_coeffs + abs(min(cor_coeffs)), type="pareto", decimals = 6);
       
-      .wh_scale <- 800 * c(1.25, 1)
+      .wh_scale <- 800 * c(1.25, 0.65)
       
       # Visualize the Correlation Coefficients
       plotly::plot_ly(
@@ -142,8 +141,10 @@ plot_metric_cor <- function(data, metric, primary_metric = "days_to_market", f =
         , width = .wh_scale[1]
         , height = .wh_scale[2]
         , hoverinfo = "text"
-        , hovertext = ~sprintf(fmt ="<b>%s <sup>n = %s</sup></b><br><b>Cor</b>(%s, %s): %.2f"
-                               , nm, ndc_cts, primary_metric, metric, cor_coeffs)
+        , hovertext = ~sprintf(
+            "<b>%s <sup>NDC Ct. = %s</sup></b><br><b>Cor</b> (%s, %s):<br><span style='font-size:1.2em;'>&nbsp;&nbsp; %.2f</span>"
+            , nm, ndc_cts, primary_metric, metric, cor_coeffs
+            )
         , name = metric
         , type = "bar"
         ) |>
